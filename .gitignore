@@ -1,0 +1,24 @@
+.env
+*.env
+*.log
+bin/
+/vendor
+*.sqlite
+# Secrets — never commit
+.env
+*.env
+
+# Go build artifacts
+*/service
+*/tmp/
+
+# Go workspace sum file (optional to commit, usually fine to ignore)
+go.work.sum
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

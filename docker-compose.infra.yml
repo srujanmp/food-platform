@@ -1,0 +1,137 @@
+version: "3.9"
+
+# Infra-only compose file.
+# Run with: docker compose -f docker-compose.infra.yml up -d
+# Use this when running Go services locally (outside Docker) during development.
+
+services:
+
+  # ── Auth DB ──────────────────────────────────────────────────────────────────
+  postgres-auth:
+    image: postgres:15-alpine
+    container_name: postgres-auth
+    environment:
+      POSTGRES_DB:       auth_db
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - auth-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── User DB (port 5433) ───────────────────────────────────────────────────────
+  postgres-user:
+    image: postgres:15-alpine
+    container_name: postgres-user
+    environment:
+      POSTGRES_DB:       user_db
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - user-data:/var/lib/postgresql/data
+
+  # ── Restaurant DB (port 5434) ─────────────────────────────────────────────────
+  postgres-restaurant:
+    image: postgres:15-alpine
+    container_name: postgres-restaurant
+    environment:
+      POSTGRES_DB:       restaurant_db
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"
+    volumes:
+      - restaurant-data:/var/lib/postgresql/data
+
+  # ── Menu DB (port 5435) ───────────────────────────────────────────────────────
+  postgres-menu:
+    image: postgres:15-alpine
+    container_name: postgres-menu
+    environment:
+      POSTGRES_DB:       menu_db
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5435:5432"
+    volumes:
+      - menu-data:/var/lib/postgresql/data
+
+  # ── Order DB (port 5436) ──────────────────────────────────────────────────────
+  postgres-order:
+    image: postgres:15-alpine
+    container_name: postgres-order
+    environment:
+      POSTGRES_DB:       order_db
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5436:5432"
+    volumes:
+      - order-data:/var/lib/postgresql/data
+
+  # ── Payment DB (port 5437) ────────────────────────────────────────────────────
+  postgres-payment:
+    image: postgres:15-alpine
+    container_name: postgres-payment
+    environment:
+      POSTGRES_DB:       payment_db
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5437:5432"
+    volumes:
+      - payment-data:/var/lib/postgresql/data
+
+  # ── Delivery DB (port 5438) ───────────────────────────────────────────────────
+  postgres-delivery:
+    image: postgres:15-alpine
+    container_name: postgres-delivery
+    environment:
+      POSTGRES_DB:       delivery_db
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5438:5432"
+    volumes:
+      - delivery-data:/var/lib/postgresql/data
+
+  # ── Redis ─────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+
+  # ── RabbitMQ ──────────────────────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI (guest/guest)
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+
+volumes:
+  auth-data:
+  user-data:
+  restaurant-data:
+  menu-data:
+  order-data:
+  payment-data:
+  delivery-data:
+  redis-data:
+  rabbitmq-data:
