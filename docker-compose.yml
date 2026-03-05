@@ -1,12 +1,7 @@
 version: "3.9"
 
-# Full stack compose — includes infra AND all service containers.
-# Run with: docker compose up --build
-# For local Go dev (run services outside Docker): use docker-compose.infra.yml instead.
-
 services:
-
-  # ── Infrastructure (reuse from infra file) ────────────────────────────────────
+  # ── Infrastructure ────────────────────────────────────────────────────────────
   postgres-auth:
     image: postgres:15-alpine
     environment:
@@ -15,6 +10,20 @@ services:
       POSTGRES_PASSWORD: postgres
     volumes:
       - auth-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres-user:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB:       user_db
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - user-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -44,20 +53,21 @@ services:
     ports:
       - "8001:8001"
     environment:
-      APP_ENV:     development
-      APP_PORT:    "8001"
-      DB_HOST:     postgres-auth
-      DB_PORT:     "5432"
-      DB_USER:     postgres
-      DB_PASSWORD: postgres
-      DB_NAME:     auth_db
-      REDIS_HOST:  redis
-      REDIS_PORT:  "6379"
-      JWT_SECRET:  "change-me-in-production"
+      APP_ENV:                   development
+      APP_PORT:                  "8001"
+      DB_HOST:                   postgres-auth
+      DB_PORT:                   "5432"
+      DB_USER:                   postgres
+      DB_PASSWORD:               postgres
+      DB_NAME:                   auth_db
+      REDIS_HOST:                redis
+      REDIS_PORT:                "6379"
+      JWT_SECRET:                "change-me-in-production"
       ACCESS_TOKEN_TTL_MINUTES:  "15"
       REFRESH_TOKEN_TTL_DAYS:    "7"
       RATE_LIMIT_AUTH_RPM:       "30"
       RATE_LIMIT_PUBLIC_RPM:     "100"
+      USER_SERVICE_URL:          "http://user-service:8002"   # ← added
     depends_on:
       postgres-auth:
         condition: service_healthy
@@ -65,12 +75,53 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  # Add more services here as you build them:
-  # user-service:
-  #   build: { context: ./user-service }
-  #   ports: ["8002:8002"]
-  #   ...
+  # ── User Service ──────────────────────────────────────────────────────────────
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    container_name: user-service
+    ports:
+      - "8002:8002"
+    environment:
+      PORT:         "8002"
+      DATABASE_URL: postgres://postgres:postgres@postgres-user:5432/user_db?sslmode=disable
+      REDIS_ADDR:   redis:6379
+      JWT_SECRET:   "change-me-in-production"
+    depends_on:
+      postgres-user:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  # ── Add more services here as you build them ──────────────────────────────────
+  # restaurant-service:
+  #   build: { context: ./restaurant-service }
+  #   ports: ["8003:8003"]
+  #   environment:
+  #     PORT: "8003"
+  #     DATABASE_URL: postgres://postgres:postgres@postgres-restaurant:5432/restaurant_db?sslmode=disable
+  #     REDIS_ADDR: redis:6379
+  #     JWT_SECRET: "change-me-in-production"
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    depends_on:
+      - postgres-auth
+      - postgres-user
+    restart: unless-stopped
+
 
 volumes:
   auth-data:
+  user-data:
   redis-data:
+
+
