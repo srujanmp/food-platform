@@ -7,7 +7,7 @@ COPY go.mod go.sum* ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o service ./internal/cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o service ./cmd/main.go
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
 FROM alpine:3.18

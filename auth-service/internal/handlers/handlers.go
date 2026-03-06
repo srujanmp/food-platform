@@ -50,6 +50,8 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		switch err {
 		case service.ErrUserAlreadyExists, service.ErrPhoneAlreadyExists:
 			c.JSON(http.StatusConflict, models.ErrorResponse{Error: err.Error()})
+		case service.ErrInvalidRole:
+			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
 		default:
 			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal_server_error"})
 		}
@@ -76,6 +78,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		switch err {
 		case service.ErrInvalidCredentials:
 			c.JSON(http.StatusUnauthorized, models.ErrorResponse{Error: "invalid_credentials"})
+		case service.ErrAccountDeleted:
+			c.JSON(http.StatusUnauthorized, models.ErrorResponse{Error: "account_deleted"})
 		default:
 			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal_server_error"})
 		}
