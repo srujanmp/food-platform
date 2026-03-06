@@ -26,6 +26,8 @@ var (
 	ErrInvalidToken       = errors.New("invalid or expired token")
 	ErrInvalidOTP         = errors.New("invalid or expired OTP")
 	ErrUserNotFound       = errors.New("user not found")
+	ErrInvalidRole        = errors.New("invalid role")
+	ErrAccountDeleted     = errors.New("account has been deleted")
 )
 
 // ─── Claims ───────────────────────────────────────────────────────────────────
@@ -92,6 +94,13 @@ func (s *authService) Register(req *models.RegisterRequest) (*models.AuthRespons
 		role = "USER"
 	}
 
+	allowedRoles := map[string]bool{
+		"USER": true, "RESTAURANT_OWNER": true, "DRIVER": true,
+	}
+	if !allowedRoles[role] {
+		return nil, ErrInvalidRole
+	}
+
 	user := &models.User{
 		Email:    req.Email,
 		Password: string(hashed),
@@ -106,6 +115,7 @@ func (s *authService) Register(req *models.RegisterRequest) (*models.AuthRespons
 	event := &models.UserCreatedEvent{
 		Event:     "USER_CREATED",
 		UserID:    user.ID,
+		Name:      req.Name,
 		Email:     user.Email,
 		Phone:     user.Phone,
 		Role:      user.Role,
@@ -129,6 +139,10 @@ func (s *authService) Login(req *models.LoginRequest) (*models.AuthResponse, err
 	}
 	if user == nil {
 		return nil, ErrInvalidCredentials
+	}
+
+	if user.IsDeleted {
+		return nil, ErrAccountDeleted
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
@@ -156,6 +170,10 @@ func (s *authService) RefreshToken(refreshToken string) (*models.AuthResponse, e
 	user, err := s.repo.FindUserByID(claims.UserID)
 	if err != nil || user == nil {
 		return nil, ErrUserNotFound
+	}
+
+	if user.IsDeleted {
+		return nil, ErrAccountDeleted
 	}
 
 	return s.buildAuthResponse(user)
@@ -248,8 +266,15 @@ func (s *authService) VerifyOTP(phone, code string) (*models.AuthResponse, error
 		return nil, ErrUserNotFound
 	}
 
-	// Mark the user as verified.
+	if user.IsDeleted {
+		return nil, ErrAccountDeleted
+	}
+
+	// Mark the user as verified and persist.
 	user.IsVerified = true
+	if err := s.repo.UpdateUser(user); err != nil {
+		return nil, err
+	}
 
 	return s.buildAuthResponse(user)
 }

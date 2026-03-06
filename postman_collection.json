@@ -1,0 +1,309 @@
+{
+  "info": {
+    "name": "Food Platform",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "AUTH_URL", "value": "http://localhost:8001/api/v1/auth" },
+    { "key": "USER_URL", "value": "http://localhost:8002/api/v1" },
+    { "key": "ACCESS_TOKEN", "value": "" },
+    { "key": "REFRESH_TOKEN", "value": "" },
+    { "key": "USER_ID", "value": "" },
+    { "key": "EMAIL", "value": "testuser@example.com" },
+    { "key": "PASSWORD", "value": "Pass@12345" },
+    { "key": "PHONE", "value": "+15551234567" },
+    { "key": "ADDRESS_ID", "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{ACCESS_TOKEN}}" }]
+  },
+  "item": [
+    {
+      "name": "Auth Service",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "url": "{{AUTH_URL}}/health",
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "Register",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const ts = Date.now();",
+                  "pm.collectionVariables.set('EMAIL', ts + '@test.com');",
+                  "pm.collectionVariables.set('PHONE', '+1555' + ts.toString().slice(-7));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('ACCESS_TOKEN', body.access_token);",
+                  "  pm.collectionVariables.set('REFRESH_TOKEN', body.refresh_token);",
+                  "  pm.collectionVariables.set('USER_ID', body.user.id);",
+                  "  pm.test('User registered', () => pm.expect(body.user.id).to.be.above(0));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{AUTH_URL}}/register",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test User\",\n  \"email\": \"{{EMAIL}}\",\n  \"password\": \"{{PASSWORD}}\",\n  \"phone\": \"{{PHONE}}\",\n  \"role\": \"USER\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Register ADMIN (should 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('ADMIN role rejected', () => pm.expect(pm.response.code).to.eql(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{AUTH_URL}}/register",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Hacker\",\n  \"email\": \"hacker@example.com\",\n  \"password\": \"Pass@12345\",\n  \"phone\": \"+15559999999\",\n  \"role\": \"ADMIN\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('ACCESS_TOKEN', body.access_token);",
+                  "  pm.collectionVariables.set('REFRESH_TOKEN', body.refresh_token);",
+                  "  pm.collectionVariables.set('USER_ID', body.user.id);",
+                  "  pm.test('Login OK', () => pm.expect(body.access_token).to.be.a('string'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{AUTH_URL}}/login",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{EMAIL}}\",\n  \"password\": \"{{PASSWORD}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('ACCESS_TOKEN', body.access_token);",
+                  "  pm.collectionVariables.set('REFRESH_TOKEN', body.refresh_token);",
+                  "  pm.test('Token refreshed', () => pm.expect(body.access_token).to.be.a('string'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{AUTH_URL}}/refresh",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{REFRESH_TOKEN}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Send OTP",
+          "request": {
+            "method": "POST",
+            "url": "{{AUTH_URL}}/otp/send",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{PHONE}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Verify OTP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('ACCESS_TOKEN', body.access_token);",
+                  "  pm.collectionVariables.set('REFRESH_TOKEN', body.refresh_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{AUTH_URL}}/otp/verify",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{PHONE}}\",\n  \"code\": \"PASTE_OTP_HERE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": "{{AUTH_URL}}/logout",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{REFRESH_TOKEN}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Account",
+          "request": {
+            "method": "DELETE",
+            "url": "{{AUTH_URL}}/account"
+          }
+        }
+      ]
+    },
+    {
+      "name": "User Service",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "url": "{{USER_URL}}/users/health",
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "Ensure Profile (internal)",
+          "request": {
+            "method": "POST",
+            "url": "{{USER_URL}}/internal/users/ensure",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"auth_id\": {{USER_ID}},\n  \"name\": \"Test User\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "url": "{{USER_URL}}/users/{{USER_ID}}"
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PUT",
+            "url": "{{USER_URL}}/users/{{USER_ID}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Name\",\n  \"avatar_url\": \"https://example.com/avatar.png\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List Addresses",
+          "request": {
+            "method": "GET",
+            "url": "{{USER_URL}}/users/{{USER_ID}}/addresses"
+          }
+        },
+        {
+          "name": "Add Address",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('ADDRESS_ID', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{USER_URL}}/users/{{USER_ID}}/addresses",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Home\",\n  \"line1\": \"123 Main Street\",\n  \"city\": \"New York\",\n  \"pincode\": \"10001\",\n  \"latitude\": 40.7128,\n  \"longitude\": -74.0060,\n  \"is_default\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "Update Address",
+          "request": {
+            "method": "PUT",
+            "url": "{{USER_URL}}/users/addresses/{{ADDRESS_ID}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Work\",\n  \"line1\": \"456 Office Blvd\",\n  \"city\": \"New York\",\n  \"pincode\": \"10002\",\n  \"is_default\": false\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Address",
+          "request": {
+            "method": "DELETE",
+            "url": "{{USER_URL}}/users/addresses/{{ADDRESS_ID}}"
+          }
+        }
+      ]
+    }
+  ]
+}

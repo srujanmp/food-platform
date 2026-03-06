@@ -19,15 +19,18 @@ type Profile struct {
 }
 
 type Address struct {
-	ID        uint    `gorm:"primaryKey" json:"id"`
-	AuthID    uint    `gorm:"not null;index" json:"auth_id"`
-	Label     string  `gorm:"size:50" json:"label"`   // Home | Work | Other
-	Line1     string  `gorm:"type:text" json:"line1"` //nolint
-	City      string  `gorm:"size:100" json:"city"`
-	Pincode   string  `gorm:"size:10" json:"pincode"`
-	Latitude  float64 `gorm:"type:decimal(10,8)" json:"latitude"`
-	Longitude float64 `gorm:"type:decimal(11,8)" json:"longitude"`
-	IsDefault bool    `gorm:"default:false" json:"is_default"`
+	ID        uint           `gorm:"primaryKey" json:"id"`
+	AuthID    uint           `gorm:"not null;index" json:"auth_id"`
+	Label     string         `gorm:"size:50" json:"label"`   // Home | Work | Other
+	Line1     string         `gorm:"type:text" json:"line1"` //nolint
+	City      string         `gorm:"size:100" json:"city"`
+	Pincode   string         `gorm:"size:10" json:"pincode"`
+	Latitude  float64        `gorm:"type:decimal(10,8)" json:"latitude"`
+	Longitude float64        `gorm:"type:decimal(11,8)" json:"longitude"`
+	IsDefault bool           `gorm:"default:false" json:"is_default"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 // ────────────────────────────────────────────────────────────
@@ -74,6 +77,7 @@ type MessageResponse struct {
 type UserCreatedEvent struct {
 	Event     string    `json:"event"`
 	UserID    uint      `json:"user_id"`
+	Name      string    `json:"name"`
 	Email     string    `json:"email"`
 	Phone     string    `json:"phone,omitempty"`
 	Role      string    `json:"role"`

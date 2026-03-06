@@ -33,7 +33,7 @@ REGISTER_RESPONSE=$(curl -s -X POST http://localhost:8001/api/v1/auth/register \
     "email":"'$TIMESTAMP'@test.com",
     "password":"Pass@12345",
     "phone":"'$PHONE'",
-    "role":"customer"
+    "role":"USER"
   }')
 
 echo "$REGISTER_RESPONSE" | jq '.'
@@ -88,7 +88,7 @@ echo "$OTP_SEND" | jq '.'
 echo
 
 # fetch latest OTP code from DB
-OTP_CODE=$(docker exec -i food-platform-postgres-auth-1 psql -U postgres -d auth_db -t -c "select code from otps order by id desc limit 1;" | tr -d '[:space:]')
+OTP_CODE=$(docker exec -i postgres-auth psql -U postgres -d auth_db -t -c "select code from otps order by id desc limit 1;" | tr -d '[:space:]')
 if [ -n "$OTP_CODE" ]; then
   echo -e "${BLUE}[TEST 5] Verify OTP (code: $OTP_CODE)${NC}"
   OTP_VERIFY=$(curl -s -X POST http://localhost:8001/api/v1/auth/otp/verify \
@@ -146,16 +146,51 @@ echo
 # Wait for event processing
 sleep 2
 
-# Test 10: Verify profile was deleted
+# Test 10: Verify profile was deleted and token rejected
 echo -e "${BLUE}[TEST 10] Verify Profile Deleted via Event${NC}"
-GET_DELETED=$(curl -s -H "Authorization: Bearer $ACCESS_TOKEN" \
+GET_DELETED=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $ACCESS_TOKEN" \
   http://localhost:8002/api/v1/users/$USER_ID)
 
-echo "$GET_DELETED" | jq '.'
-if echo "$GET_DELETED" | jq -e '.error' > /dev/null 2>&1; then
-  echo -e "${GREEN}✓ Profile  deleted (event was consumed)${NC}\n"
+echo "HTTP status: $GET_DELETED"
+if [ "$GET_DELETED" = "401" ] || [ "$GET_DELETED" = "404" ]; then
+  echo -e "${GREEN}✓ Profile access blocked after deletion (HTTP $GET_DELETED)${NC}\n"
 else
-  echo -e "${RED}⚠ Profile still exists${NC}\n"
+  echo -e "${RED}⚠ Unexpected status: $GET_DELETED${NC}\n"
+fi
+
+# Test 11: Privilege escalation regression — ADMIN role must be rejected
+echo -e "${BLUE}[TEST 11] Privilege Escalation Regression (ADMIN role)${NC}"
+ADMIN_STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8001/api/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"hacker","email":"hacker@x.com","password":"Pass@12345","phone":"+15559999999","role":"ADMIN"}')
+echo "HTTP status: $ADMIN_STATUS"
+if [ "$ADMIN_STATUS" = "400" ]; then
+  echo -e "${GREEN}✓ ADMIN role correctly rejected (400)${NC}\n"
+else
+  echo -e "${RED}⚠ Expected 400, got $ADMIN_STATUS${NC}\n"
+fi
+
+# Test 12: Deleted user login regression — must be rejected
+echo -e "${BLUE}[TEST 12] Deleted User Login Regression${NC}"
+DELETED_LOGIN_STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8001/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"'$EMAIL'","password":"'$PASSWORD'"}')
+echo "HTTP status: $DELETED_LOGIN_STATUS"
+if [ "$DELETED_LOGIN_STATUS" = "401" ]; then
+  echo -e "${GREEN}✓ Deleted user login correctly rejected (401)${NC}\n"
+else
+  echo -e "${RED}⚠ Expected 401, got $DELETED_LOGIN_STATUS${NC}\n"
+fi
+
+# Test 13: OTP verify persistence — is_verified should be true in DB
+echo -e "${BLUE}[TEST 13] OTP Verify Persistence Check${NC}"
+VERIFIED=$(docker exec -i postgres-auth psql -U postgres -d auth_db -t -c \
+  "SELECT is_verified FROM users WHERE email='$EMAIL';" | tr -d '[:space:]')
+echo "is_verified = $VERIFIED"
+if [ "$VERIFIED" = "t" ]; then
+  echo -e "${GREEN}✓ is_verified persisted correctly${NC}\n"
+else
+  echo -e "${RED}⚠ is_verified not persisted (got: $VERIFIED)${NC}\n"
 fi
 
 echo -e "${GREEN}=== Testing Complete ===${NC}"

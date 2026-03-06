@@ -43,7 +43,7 @@ func (r *authRepository) UpdateUser(user *models.User) error {
 
 func (r *authRepository) FindUserByEmail(email string) (*models.User, error) {
 	var user models.User
-	err := r.db.Where("email = ?", email).First(&user).Error
+	err := r.db.Where("email = ? AND is_deleted = false", email).First(&user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil // caller checks for nil
 	}
@@ -52,7 +52,7 @@ func (r *authRepository) FindUserByEmail(email string) (*models.User, error) {
 
 func (r *authRepository) FindUserByID(id uint) (*models.User, error) {
 	var user models.User
-	err := r.db.First(&user, id).Error
+	err := r.db.Where("id = ? AND is_deleted = false", id).First(&user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
@@ -61,7 +61,7 @@ func (r *authRepository) FindUserByID(id uint) (*models.User, error) {
 
 func (r *authRepository) FindUserByPhone(phone string) (*models.User, error) {
 	var user models.User
-	err := r.db.Where("phone = ?", phone).First(&user).Error
+	err := r.db.Where("phone = ? AND is_deleted = false", phone).First(&user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}

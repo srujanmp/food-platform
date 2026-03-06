@@ -91,6 +91,7 @@ type HealthResponse struct {
 type UserCreatedEvent struct {
 	Event     string    `json:"event"`
 	UserID    uint      `json:"user_id"`
+	Name      string    `json:"name"`
 	Email     string    `json:"email"`
 	Phone     string    `json:"phone,omitempty"`
 	Role      string    `json:"role"`

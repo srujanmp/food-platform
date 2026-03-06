@@ -51,14 +51,31 @@ func (c *rabbitmqConsumer) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to declare exchange: %w", err)
 	}
 
-	// Declare the queue for USER_CREATED events
+	// Declare dead-letter exchange
+	if err := c.ch.ExchangeDeclare(
+		"user_events.dlx", // name
+		"topic",           // kind
+		true,              // durable
+		false,             // auto-delete
+		false,             // internal
+		false,             // no-wait
+		nil,               // args
+	); err != nil {
+		return fmt.Errorf("failed to declare DLX exchange: %w", err)
+	}
+
+	// Declare the queue for USER_CREATED events with dead-letter exchange
+	createdArgs := amqp091.Table{
+		"x-dead-letter-exchange":    "user_events.dlx",
+		"x-dead-letter-routing-key": "user.created.dlq",
+	}
 	createdQueue, err := c.ch.QueueDeclare(
 		"user.created.queue", // name
 		true,                 // durable
 		false,                // delete when unused
 		false,                // exclusive
 		false,                // no-wait
-		nil,                  // args
+		createdArgs,          // args
 	)
 	if err != nil {
 		return fmt.Errorf("failed to declare created queue: %w", err)
@@ -75,14 +92,18 @@ func (c *rabbitmqConsumer) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to bind created queue: %w", err)
 	}
 
-	// Declare the queue for USER_DELETED events
+	// Declare the queue for USER_DELETED events with dead-letter exchange
+	deletedArgs := amqp091.Table{
+		"x-dead-letter-exchange":    "user_events.dlx",
+		"x-dead-letter-routing-key": "user.deleted.dlq",
+	}
 	deletedQueue, err := c.ch.QueueDeclare(
 		"user.deleted.queue", // name
 		true,                 // durable
 		false,                // delete when unused
 		false,                // exclusive
 		false,                // no-wait
-		nil,                  // args
+		deletedArgs,          // args
 	)
 	if err != nil {
 		return fmt.Errorf("failed to declare deleted queue: %w", err)
@@ -99,11 +120,11 @@ func (c *rabbitmqConsumer) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to bind deleted queue: %w", err)
 	}
 
-	// Start consuming USER_CREATED messages
+	// Start consuming USER_CREATED messages (manual ack)
 	createdMsgs, err := c.ch.Consume(
 		createdQueue.Name, // queue
 		"",                // consumer
-		true,              // auto-ack
+		false,             // auto-ack = false (manual ack)
 		false,             // exclusive
 		false,             // no-local
 		false,             // no-wait
@@ -113,11 +134,11 @@ func (c *rabbitmqConsumer) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to consume from created queue: %w", err)
 	}
 
-	// Start consuming USER_DELETED messages
+	// Start consuming USER_DELETED messages (manual ack)
 	deletedMsgs, err := c.ch.Consume(
 		deletedQueue.Name, // queue
 		"",                // consumer
-		true,              // auto-ack
+		false,             // auto-ack = false (manual ack)
 		false,             // exclusive
 		false,             // no-local
 		false,             // no-wait
@@ -149,17 +170,19 @@ func (c *rabbitmqConsumer) handleCreatedMessages(ctx context.Context, msgs <-cha
 			var event models.UserCreatedEvent
 			if err := json.Unmarshal(msg.Body, &event); err != nil {
 				log.Printf("Failed to unmarshal USER_CREATED event: %v", err)
+				_ = msg.Nack(false, false) // send to DLQ
 				continue
 			}
 
-			// Create profile for the new user
-			_, err := c.profileService.EnsureProfile(event.UserID, "")
+			// Create profile for the new user (pass name from event)
+			_, err := c.profileService.EnsureProfile(event.UserID, event.Name)
 			if err != nil {
 				log.Printf("Failed to create profile for user %d: %v", event.UserID, err)
-				// In production, you might want to implement a dead letter queue
+				_ = msg.Nack(false, false) // send to DLQ
 				continue
 			}
 
+			_ = msg.Ack(false)
 			log.Printf("Profile created for user %d (email: %s)", event.UserID, event.Email)
 		}
 	}
@@ -179,6 +202,7 @@ func (c *rabbitmqConsumer) handleDeletedMessages(ctx context.Context, msgs <-cha
 			var event models.UserDeletedEvent
 			if err := json.Unmarshal(msg.Body, &event); err != nil {
 				log.Printf("Failed to unmarshal USER_DELETED event: %v", err)
+				_ = msg.Nack(false, false) // send to DLQ
 				continue
 			}
 
@@ -186,10 +210,11 @@ func (c *rabbitmqConsumer) handleDeletedMessages(ctx context.Context, msgs <-cha
 			err := c.profileService.DeleteProfile(event.UserID, event.UserID, "SYSTEM")
 			if err != nil {
 				log.Printf("Failed to delete profile for user %d: %v", event.UserID, err)
-				// In production, you might want to implement a dead letter queue
+				_ = msg.Nack(false, false) // send to DLQ
 				continue
 			}
 
+			_ = msg.Ack(false)
 			log.Printf("Profile deleted for user %d (email: %s)", event.UserID, event.Email)
 		}
 	}
