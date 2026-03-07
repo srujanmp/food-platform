@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/food-platform/auth-service/internal/middleware"
@@ -206,6 +207,31 @@ func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, resp)
+}
+
+// ─── POST /api/v1/internal/ban/:userId ─────────────────────────────────────────
+// Internal endpoint — no JWT, Docker-network only.
+// Soft-deletes the user and revokes all refresh tokens.
+
+func (h *AuthHandler) BanUser(c *gin.Context) {
+	userID := c.Param("userId")
+	id, err := strconv.ParseUint(userID, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid user id"})
+		return
+	}
+
+	if err := h.svc.BanUser(uint(id)); err != nil {
+		switch err {
+		case service.ErrUserNotFound:
+			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "user_not_found"})
+		default:
+			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal_server_error"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse{Message: "user banned successfully"})
 }
 
 // ─── GET /api/v1/auth/health ──────────────────────────────────────────────────

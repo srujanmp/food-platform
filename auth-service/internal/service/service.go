@@ -49,6 +49,7 @@ type AuthService interface {
 	SendOTP(phone string) error
 	VerifyOTP(phone, code string) (*models.AuthResponse, error)
 	DeleteAccount(userID uint) error
+	BanUser(userID uint) error
 }
 
 type authService struct {
@@ -217,6 +218,32 @@ func (s *authService) DeleteAccount(userID uint) error {
 	if err := s.publisher.PublishUserDeleted(event); err != nil {
 		// Log the error but don't fail the deletion
 		fmt.Printf("Failed to publish USER_DELETED event: %v\n", err)
+	}
+
+	// Revoke the user's refresh tokens
+	ctx := context.Background()
+	s.redis.Del(ctx, s.refreshKey(userID)) //nolint
+
+	return nil
+}
+
+// ─── Ban User ─────────────────────────────────────────────────────────────────
+
+func (s *authService) BanUser(userID uint) error {
+	user, err := s.repo.FindUserByID(userID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return ErrUserNotFound
+	}
+
+	now := time.Now()
+	user.IsDeleted = true
+	user.DeletedAt = &now
+
+	if err := s.repo.UpdateUser(user); err != nil {
+		return err
 	}
 
 	// Revoke the user's refresh tokens

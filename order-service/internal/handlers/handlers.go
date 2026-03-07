@@ -33,6 +33,7 @@ func (h *OrderHandler) RegisterRoutes(rg *gin.RouterGroup, jwtSecret string) {
 // RegisterInternalRoutes wires internal-only endpoints (no JWT expected).
 func (h *OrderHandler) RegisterInternalRoutes(rg *gin.RouterGroup) {
 	rg.PATCH("/internal/orders/:id/status", h.UpdateStatus)
+	rg.GET("/internal/orders/stats", h.GetStats)
 }
 
 func (h *OrderHandler) PlaceOrder(c *gin.Context) {
@@ -168,6 +169,15 @@ func (h *OrderHandler) UpdateStatus(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, models.SuccessResponse{Message: "status_updated"})
+}
+
+func (h *OrderHandler) GetStats(c *gin.Context) {
+	stats, err := h.svc.GetStats()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "stats_query_failed"})
+		return
+	}
+	c.JSON(http.StatusOK, stats)
 }
 
 func (h *OrderHandler) Health(c *gin.Context) {

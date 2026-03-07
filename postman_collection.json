@@ -10,6 +10,7 @@
     { "key": "ORDER_URL", "value": "http://localhost:8004/api/v1" },
     { "key": "DELIVERY_URL", "value": "http://localhost:8005/api/v1" },
     { "key": "NOTIFICATION_URL", "value": "http://localhost:8006/api/v1" },
+    { "key": "ADMIN_URL", "value": "http://localhost:8007/api/v1" },
     { "key": "ACCESS_TOKEN", "value": "" },
     { "key": "REFRESH_TOKEN", "value": "" },
     { "key": "USER_ID", "value": "" },
@@ -863,6 +864,59 @@
           "request": {
             "method": "PATCH",
             "url": "{{NOTIFICATION_URL}}/notifications/1/read"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Service",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "url": "{{ADMIN_URL}}/admin/health",
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "List Users (ADMIN)",
+          "request": {
+            "method": "GET",
+            "url": "{{ADMIN_URL}}/admin/users",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }]
+          }
+        },
+        {
+          "name": "Ban User (ADMIN)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{ADMIN_URL}}/admin/users/{{USER_ID}}/ban",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }]
+          }
+        },
+        {
+          "name": "List Restaurants (ADMIN)",
+          "request": {
+            "method": "GET",
+            "url": "{{ADMIN_URL}}/admin/restaurants",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }]
+          }
+        },
+        {
+          "name": "Approve Restaurant (ADMIN)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{ADMIN_URL}}/admin/restaurants/{{RESTAURANT_ID}}/approve",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }]
+          }
+        },
+        {
+          "name": "Analytics Dashboard (ADMIN)",
+          "request": {
+            "method": "GET",
+            "url": "{{ADMIN_URL}}/admin/analytics/dashboard",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ADMIN_TOKEN}}" }]
           }
         }
       ]

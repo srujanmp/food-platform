@@ -108,6 +108,14 @@ type SuccessResponse struct {
 	Message string `json:"message"`
 }
 
+// OrderStats holds aggregated order metrics for the admin dashboard.
+type OrderStats struct {
+	TotalOrders    int64   `json:"total_orders"`
+	TotalRevenue   float64 `json:"total_revenue"`
+	TotalDelivered int64   `json:"total_delivered"`
+	TotalCancelled int64   `json:"total_cancelled"`
+}
+
 // Health check response
 type HealthResponse struct {
 	Service string `json:"service"`

@@ -34,6 +34,7 @@ type OrderService interface {
 	CancelOrder(userID uint, orderID uint) error
 	UpdateStatusByOwner(ownerUserID uint, orderID uint, status string) error
 	UpdateStatus(orderID uint, status string) error
+	GetStats() (*models.OrderStats, error)
 }
 
 // orderService is concrete implementation.
@@ -343,4 +344,8 @@ func (s *orderService) UpdateStatus(orderID uint, status string) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		return s.repo.Update(tx, order)
 	})
+}
+
+func (s *orderService) GetStats() (*models.OrderStats, error) {
+	return s.repo.GetStats()
 }

@@ -16,6 +16,7 @@ type ProfileRepository interface {
 	Create(p *models.Profile) error
 	Update(p *models.Profile) error
 	SoftDelete(authID uint) error
+	ListAll() ([]models.Profile, error)
 }
 
 type AddressRepository interface {
@@ -54,6 +55,12 @@ func (r *profileRepo) Update(p *models.Profile) error {
 
 func (r *profileRepo) SoftDelete(authID uint) error {
 	return r.db.Model(&models.Profile{}).Where("auth_id = ?", authID).Delete(&models.Profile{}).Error
+}
+
+func (r *profileRepo) ListAll() ([]models.Profile, error) {
+	var profiles []models.Profile
+	err := r.db.Find(&profiles).Error
+	return profiles, err
 }
 
 // ────────────────────────────────────────────────────────────

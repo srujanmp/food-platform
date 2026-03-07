@@ -104,6 +104,9 @@ func main() {
 		auth.Use(middleware.RateLimit(rdb, cfg.RateLimitAuthRPM, time.Minute))
 
 		handler.RegisterRoutes(auth, cfg.JWTSecret)
+
+		// Internal routes — no JWT, Docker-network only
+		v1.POST("/internal/ban/:userId", handler.BanUser)
 	}
 
 	// ── 8. HTTP server with graceful shutdown ─────────────────────────────────

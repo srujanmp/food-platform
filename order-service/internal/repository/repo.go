@@ -14,6 +14,7 @@ type OrderRepository interface {
 	ListByUser(userID uint) ([]models.Order, error)
 	ListByRestaurant(restID uint) ([]models.Order, error)
 	Update(tx *gorm.DB, o *models.Order) error
+	GetStats() (*models.OrderStats, error)
 }
 
 // PaymentRepository handles payments.
@@ -67,6 +68,31 @@ func (r *orderRepo) ListByRestaurant(restID uint) ([]models.Order, error) {
 
 func (r *orderRepo) Update(tx *gorm.DB, o *models.Order) error {
 	return tx.Save(o).Error
+}
+
+func (r *orderRepo) GetStats() (*models.OrderStats, error) {
+	var stats models.OrderStats
+	// total orders
+	if err := r.db.Model(&models.Order{}).Count(&stats.TotalOrders).Error; err != nil {
+		return nil, err
+	}
+	// total revenue from successful payments
+	var revenue *float64
+	if err := r.db.Model(&models.Payment{}).Where("status = ?", "SUCCESS").Select("COALESCE(SUM(amount), 0)").Scan(&revenue).Error; err != nil {
+		return nil, err
+	}
+	if revenue != nil {
+		stats.TotalRevenue = *revenue
+	}
+	// delivered count
+	if err := r.db.Model(&models.Order{}).Where("status = ?", "DELIVERED").Count(&stats.TotalDelivered).Error; err != nil {
+		return nil, err
+	}
+	// cancelled count
+	if err := r.db.Model(&models.Order{}).Where("status = ?", "CANCELLED").Count(&stats.TotalCancelled).Error; err != nil {
+		return nil, err
+	}
+	return &stats, nil
 }
 
 // paymentRepo implements PaymentRepository

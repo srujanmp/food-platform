@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/food-platform/user-service/internal/models"
 	"github.com/food-platform/user-service/internal/service"
+	"github.com/gin-gonic/gin"
 )
 
 // ────────────────────────────────────────────────────────────
@@ -201,4 +201,32 @@ func (h *AddressHandler) DeleteAddress(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, models.MessageResponse{Message: "address deleted"})
+}
+
+// ────────────────────────────────────────────────────────────
+// Internal handlers (no JWT — Docker-network only)
+// ────────────────────────────────────────────────────────────
+
+// GET /internal/users — list all profiles (called by admin-service)
+func (h *ProfileHandler) ListAllProfiles(c *gin.Context) {
+	profiles, err := h.svc.ListAllProfiles()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal error"})
+		return
+	}
+	c.JSON(http.StatusOK, profiles)
+}
+
+// PATCH /internal/users/:id/ban — soft-delete a profile (called by admin-service)
+func (h *ProfileHandler) BanProfile(c *gin.Context) {
+	id, err := paramUint(c, "id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid id"})
+		return
+	}
+	if err := h.svc.BanProfile(id); err != nil {
+		handleSvcErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, models.MessageResponse{Message: "user profile banned"})
 }

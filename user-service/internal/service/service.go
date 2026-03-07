@@ -22,6 +22,8 @@ type ProfileService interface {
 	GetProfile(authID uint, callerID uint, callerRole string) (*models.Profile, error)
 	UpdateProfile(authID uint, callerID uint, callerRole string, req *models.UpdateProfileRequest) (*models.Profile, error)
 	DeleteProfile(authID uint, callerID uint, callerRole string) error
+	ListAllProfiles() ([]models.Profile, error)
+	BanProfile(authID uint) error
 }
 
 type profileService struct {
@@ -99,6 +101,23 @@ func (s *profileService) DeleteProfile(authID uint, callerID uint, callerRole st
 	}
 	if callerRole != "ADMIN" && callerID != p.AuthID {
 		return ErrForbidden
+	}
+	return s.profileRepo.SoftDelete(p.AuthID)
+}
+
+// ListAllProfiles returns all profiles (for admin internal use).
+func (s *profileService) ListAllProfiles() ([]models.Profile, error) {
+	return s.profileRepo.ListAll()
+}
+
+// BanProfile soft-deletes a profile by auth_id (for admin internal use).
+func (s *profileService) BanProfile(authID uint) error {
+	p, err := s.profileRepo.GetByAuthID(authID)
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return ErrNotFound
 	}
 	return s.profileRepo.SoftDelete(p.AuthID)
 }

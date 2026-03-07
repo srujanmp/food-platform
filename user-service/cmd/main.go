@@ -89,7 +89,8 @@ func main() {
 	// Called by auth-service immediately after registration to
 	// create the profile row in user_db.
 	v1.POST("/internal/users/ensure", profileH.EnsureProfile)
-
+	v1.GET("/internal/users", profileH.ListAllProfiles)
+	v1.PATCH("/internal/users/:id/ban", profileH.BanProfile)
 	// ── Protected routes ──────────────────────────────────────
 	auth := middleware.Auth(cfg.JWTSecret)
 
