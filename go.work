@@ -3,4 +3,5 @@ go 1.26.0
 use (
 	./auth-service
 	./user-service
+	./restaurant-service
 )

@@ -19,6 +19,16 @@
       "Username": "postgres",
       "SSLMode": "prefer",
       "PassFile": "/pgpass"
+    },
+    "3": {
+      "Name": "restaurant-db (postgres-restaurant)",
+      "Group": "Food Platform",
+      "Host": "postgres-restaurant",
+      "Port": 5432,
+      "MaintenanceDB": "restaurant_db",
+      "Username": "postgres",
+      "SSLMode": "prefer",
+      "PassFile": "/pgpass"
     }
   }
 }

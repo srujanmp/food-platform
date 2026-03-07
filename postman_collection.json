@@ -6,13 +6,17 @@
   "variable": [
     { "key": "AUTH_URL", "value": "http://localhost:8001/api/v1/auth" },
     { "key": "USER_URL", "value": "http://localhost:8002/api/v1" },
+    { "key": "RESTAURANT_URL", "value": "http://localhost:8003/api/v1" },
     { "key": "ACCESS_TOKEN", "value": "" },
     { "key": "REFRESH_TOKEN", "value": "" },
     { "key": "USER_ID", "value": "" },
     { "key": "EMAIL", "value": "testuser@example.com" },
     { "key": "PASSWORD", "value": "Pass@12345" },
     { "key": "PHONE", "value": "+15551234567" },
-    { "key": "ADDRESS_ID", "value": "" }
+    { "key": "ADDRESS_ID", "value": "" },
+    { "key": "RESTAURANT_ID", "value": "" },
+    { "key": "MENU_ITEM_ID", "value": "" },
+    { "key": "ADMIN_TOKEN", "value": "" }
   ],
   "auth": {
     "type": "bearer",
@@ -89,6 +93,34 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Hacker\",\n  \"email\": \"hacker@example.com\",\n  \"password\": \"Pass@12345\",\n  \"phone\": \"+15559999999\",\n  \"role\": \"ADMIN\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('ADMIN_TOKEN', body.access_token);",
+                  "  pm.collectionVariables.set('ACCESS_TOKEN', body.access_token);",
+                  "  pm.test('Admin login OK', () => pm.expect(body.user.role).to.eql('ADMIN'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{AUTH_URL}}/login",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@admin.com\",\n  \"password\": \"admin\"\n}"
             }
           }
         },
@@ -301,6 +333,240 @@
           "request": {
             "method": "DELETE",
             "url": "{{USER_URL}}/users/addresses/{{ADDRESS_ID}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Restaurant Service",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "url": "{{RESTAURANT_URL}}/restaurants/health",
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "Register RESTAURANT_OWNER",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const ts = Date.now();",
+                  "pm.collectionVariables.set('EMAIL', 'owner' + ts + '@test.com');",
+                  "pm.collectionVariables.set('PHONE', '+1555' + ts.toString().slice(-7));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('ACCESS_TOKEN', body.access_token);",
+                  "  pm.collectionVariables.set('USER_ID', body.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{AUTH_URL}}/register",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Restaurant Owner\",\n  \"email\": \"{{EMAIL}}\",\n  \"password\": \"{{PASSWORD}}\",\n  \"phone\": \"{{PHONE}}\",\n  \"role\": \"RESTAURANT_OWNER\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Create Restaurant (Owner)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('RESTAURANT_ID', body.restaurant.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{RESTAURANT_URL}}/restaurants",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Tandoori Nights\",\n  \"address\": \"123 Spice Lane\",\n  \"latitude\": 17.385,\n  \"longitude\": 78.4867,\n  \"cuisine\": \"Indian\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List Restaurants (Public)",
+          "request": {
+            "method": "GET",
+            "url": "{{RESTAURANT_URL}}/restaurants",
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "Get Restaurant with Menu (Public)",
+          "request": {
+            "method": "GET",
+            "url": "{{RESTAURANT_URL}}/restaurants/{{RESTAURANT_ID}}",
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "Search Restaurants (Public)",
+          "request": {
+            "method": "GET",
+            "url": "{{RESTAURANT_URL}}/restaurants/search?q=Tandoori",
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "Nearby Restaurants (Public)",
+          "request": {
+            "method": "GET",
+            "url": "{{RESTAURANT_URL}}/restaurants/nearby?lat=17.385&lng=78.4867&radius=10",
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "Update Restaurant (Owner)",
+          "request": {
+            "method": "PUT",
+            "url": "{{RESTAURANT_URL}}/restaurants/{{RESTAURANT_ID}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Tandoori Nights Deluxe\",\n  \"cuisine\": \"North Indian\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Toggle Status (Owner)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{RESTAURANT_URL}}/restaurants/{{RESTAURANT_ID}}/status"
+          }
+        },
+        {
+          "name": "Update Order Status (Owner)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{RESTAURANT_URL}}/restaurants/{{RESTAURANT_ID}}/order-status",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": 1,\n  \"status\": \"PREPARING\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Approve Restaurant (ADMIN)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{RESTAURANT_URL}}/restaurants/{{RESTAURANT_ID}}/approve",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{ADMIN_TOKEN}}" }]
+            },
+            "description": "Requires ADMIN role token — use Login Admin first"
+          }
+        },
+        {
+          "name": "Create Menu Item (Owner)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('MENU_ITEM_ID', body.menu_item.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{RESTAURANT_URL}}/restaurants/{{RESTAURANT_ID}}/menu",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Butter Chicken\",\n  \"description\": \"Creamy tomato-based chicken curry\",\n  \"price\": 350.00,\n  \"category\": \"Main Course\",\n  \"is_veg\": false,\n  \"image_url\": \"https://example.com/butter-chicken.jpg\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List Menu Items (Public)",
+          "request": {
+            "method": "GET",
+            "url": "{{RESTAURANT_URL}}/restaurants/{{RESTAURANT_ID}}/menu",
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "Update Menu Item (Owner)",
+          "request": {
+            "method": "PUT",
+            "url": "{{RESTAURANT_URL}}/restaurants/{{RESTAURANT_ID}}/menu/{{MENU_ITEM_ID}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price\": 399.00,\n  \"description\": \"Rich & creamy butter chicken\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Toggle Menu Item Availability (Owner)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{RESTAURANT_URL}}/restaurants/{{RESTAURANT_ID}}/menu/{{MENU_ITEM_ID}}/toggle"
+          }
+        },
+        {
+          "name": "Delete Menu Item (Owner)",
+          "request": {
+            "method": "DELETE",
+            "url": "{{RESTAURANT_URL}}/restaurants/{{RESTAURANT_ID}}/menu/{{MENU_ITEM_ID}}"
+          }
+        },
+        {
+          "name": "Internal - Get Restaurant",
+          "request": {
+            "method": "GET",
+            "url": "{{RESTAURANT_URL}}/internal/restaurants/{{RESTAURANT_ID}}",
+            "auth": { "type": "noauth" },
+            "description": "Internal endpoint for order-service"
+          }
+        },
+        {
+          "name": "Internal - Get Menu Item",
+          "request": {
+            "method": "GET",
+            "url": "{{RESTAURANT_URL}}/internal/restaurants/{{RESTAURANT_ID}}/menu/{{MENU_ITEM_ID}}",
+            "auth": { "type": "noauth" },
+            "description": "Internal endpoint for order-service"
+          }
+        },
+        {
+          "name": "Delete Restaurant (Owner)",
+          "request": {
+            "method": "DELETE",
+            "url": "{{RESTAURANT_URL}}/restaurants/{{RESTAURANT_ID}}"
           }
         }
       ]

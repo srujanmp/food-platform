@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -20,6 +21,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
+	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 func main() {
@@ -63,6 +66,9 @@ func main() {
 	if err := db.AutoMigrate(&models.User{}, &models.OTP{}); err != nil {
 		logger.Fatal("auto-migrate failed", zap.Error(err))
 	}
+
+	// ── 4b. Seed default admin ────────────────────────────────────────────────
+	seedAdmin(db, publisher, logger, cfg)
 
 	// ── 5. Wire layers ────────────────────────────────────────────────────────
 	repo := repository.New(db)
@@ -140,4 +146,56 @@ func main() {
 	rbConn.Close()
 
 	logger.Info("auth-service stopped")
+}
+
+// seedAdmin ensures the admin user exists in the users table on every startup.
+func seedAdmin(db *gorm.DB, publisher events.Publisher, logger *zap.Logger, cfg *config.Config) {
+	if cfg.AdminPassword == "" {
+		logger.Info("seedAdmin: ADMIN_PASSWORD not set, skipping admin seed")
+		return
+	}
+
+	var user models.User
+	err := db.Where("email = ?", cfg.AdminEmail).First(&user).Error
+	if err == nil {
+		return
+	}
+	if err != gorm.ErrRecordNotFound {
+		logger.Error("seedAdmin: failed to query admin user", zap.Error(err))
+		return
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(cfg.AdminPassword), 12)
+	if err != nil {
+		logger.Error("seedAdmin: failed to hash password", zap.Error(err))
+		return
+	}
+
+	user = models.User{
+		Email:      cfg.AdminEmail,
+		Password:   string(hashed),
+		Phone:      "+10000000000",
+		Role:       "ADMIN",
+		IsVerified: true,
+	}
+	if err := db.Create(&user).Error; err != nil {
+		logger.Error("seedAdmin: failed to create admin user", zap.Error(err))
+		return
+	}
+
+	// Publish USER_CREATED so user-service creates the admin profile.
+	event := &models.UserCreatedEvent{
+		Event:     "USER_CREATED",
+		UserID:    user.ID,
+		Name:      "Admin",
+		Email:     user.Email,
+		Phone:     user.Phone,
+		Role:      user.Role,
+		Timestamp: time.Now(),
+	}
+	if err := publisher.PublishUserCreated(event); err != nil {
+		logger.Warn("seedAdmin: failed to publish USER_CREATED event", zap.Error(err))
+	}
+
+	fmt.Printf("✓ Default admin seeded (id=%d, email=%s)\n", user.ID, cfg.AdminEmail)
 }

@@ -38,6 +38,9 @@ type Config struct {
 
 	RateLimitAuthRPM   int
 	RateLimitPublicRPM int
+
+	AdminEmail    string
+	AdminPassword string
 }
 
 // Load reads environment variables (from .env in dev, from real env in prod).
@@ -76,6 +79,9 @@ func Load() *Config {
 
 		RateLimitAuthRPM:   authRPM,
 		RateLimitPublicRPM: pubRPM,
+
+		AdminEmail:    getEnv("ADMIN_EMAIL", "admin@admin.com"),
+		AdminPassword: getEnv("ADMIN_PASSWORD", ""),
 	}
 }
 
