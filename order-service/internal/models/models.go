@@ -95,7 +95,7 @@ type OwnerUpdateStatusRequest struct {
 
 // InternalUpdateStatusRequest for internal/delivery status updates.
 type InternalUpdateStatusRequest struct {
-	Status string `json:"status" binding:"required,oneof=OUT_FOR_DELIVERY DELIVERED FAILED"`
+	Status string `json:"status" binding:"required,oneof=CONFIRMED PREPARING PREPARED OUT_FOR_DELIVERY DELIVERED FAILED"`
 }
 
 // standard response wrappers

@@ -276,6 +276,9 @@ var validOwnerTransitions = map[string]string{
 
 // validInternalTransitions defines which statuses the internal/delivery system can set.
 var validInternalTransitions = map[string]string{
+	"CONFIRMED":        "PLACED",
+	"PREPARING":        "CONFIRMED",
+	"PREPARED":         "PREPARING",
 	"OUT_FOR_DELIVERY": "PREPARED",
 	"DELIVERED":        "OUT_FOR_DELIVERY",
 	"FAILED":           "", // allowed from any status

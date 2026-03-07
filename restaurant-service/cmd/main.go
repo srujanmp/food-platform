@@ -10,9 +10,11 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
 
 	"github.com/food-platform/restaurant-service/internal/config"
+	"github.com/food-platform/restaurant-service/internal/events"
 	"github.com/food-platform/restaurant-service/internal/handlers"
 	"github.com/food-platform/restaurant-service/internal/middleware"
 	"github.com/food-platform/restaurant-service/internal/models"
@@ -37,10 +39,50 @@ func main() {
 	// ── Redis ─────────────────────────────────────────────────
 	rdb := config.ConnectRedis(cfg.RedisAddr)
 
+	// ── RabbitMQ ──────────────────────────────────────────────
+	amqpConn, err := amqp.Dial(cfg.RabbitMQURL)
+	if err != nil {
+		log.Fatal("failed to connect to RabbitMQ", zap.Error(err))
+	}
+	defer amqpConn.Close()
+
+	amqpCh, err := amqpConn.Channel()
+	if err != nil {
+		log.Fatal("failed to open RabbitMQ channel", zap.Error(err))
+	}
+	defer amqpCh.Close()
+
+	publisher, err := events.NewPublisher(amqpCh)
+	if err != nil {
+		log.Fatal("failed to create publisher", zap.Error(err))
+	}
+
 	// ── Repos ─────────────────────────────────────────────────
 	restaurantRepo := repository.NewRestaurantRepository(db)
 	menuItemRepo := repository.NewMenuItemRepository(db)
-	outboxRepo := repository.NewOutboxRepository()
+	outboxRepo := repository.NewOutboxRepository(db)
+
+	// ── Outbox Relay ──────────────────────────────────────────
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			evts, err := outboxRepo.ListUnpublished(50)
+			if err != nil {
+				log.Error("outbox relay: list failed", zap.Error(err))
+				continue
+			}
+			for _, evt := range evts {
+				if pubErr := publisher.Publish(evt.EventType, []byte(evt.Payload)); pubErr != nil {
+					log.Error("outbox relay: publish failed", zap.Uint("id", evt.ID), zap.Error(pubErr))
+					continue
+				}
+				if markErr := outboxRepo.MarkPublished(evt.ID); markErr != nil {
+					log.Error("outbox relay: mark published failed", zap.Uint("id", evt.ID), zap.Error(markErr))
+				}
+			}
+		}
+	}()
 
 	// ── Services ──────────────────────────────────────────────
 	restaurantSvc := service.NewRestaurantService(restaurantRepo, outboxRepo, db, cfg.OrderServiceURL)

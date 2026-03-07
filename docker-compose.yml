@@ -154,11 +154,14 @@ services:
       REDIS_ADDR:        redis:6379
       JWT_SECRET:        "change-me-in-production"
       ORDER_SERVICE_URL: "http://order-service:8004"
+      RABBITMQ_URL:      amqp://guest:guest@rabbitmq:5672/
     depends_on:
       postgres-restaurant:
         condition: service_healthy
       redis:
         condition: service_started
+      rabbitmq:
+        condition: service_healthy
     restart: unless-stopped
 
   # ── Order Service ─────────────────────────────────────────────────────────────
@@ -186,6 +189,45 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  postgres-delivery:
+    image: postgres:15-alpine
+    container_name: postgres-delivery
+    environment:
+      POSTGRES_DB:       delivery_db
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - delivery-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Delivery Service ──────────────────────────────────────────────────────────
+  delivery-service:
+    build:
+      context: ./delivery-service
+      dockerfile: Dockerfile
+    container_name: delivery-service
+    ports:
+      - "8005:8005"
+    environment:
+      PORT:               "8005"
+      DATABASE_URL:       postgres://postgres:postgres@postgres-delivery:5432/delivery_db?sslmode=disable
+      REDIS_URL:          redis:6379
+      RABBITMQ_URL:       "amqp://guest:guest@rabbitmq:5672/"
+      JWT_SECRET:         "change-me-in-production"
+      ORDER_SERVICE_URL:  "http://order-service:8004"
+    depends_on:
+      postgres-delivery:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
   # ── pgAdmin ───────────────────────────────────────────────────────────────────
   pgadmin:
     image: dpage/pgadmin4
@@ -205,6 +247,7 @@ services:
       - postgres-user
       - postgres-restaurant
       - postgres-order
+      - postgres-delivery
     restart: unless-stopped
 
 volumes:
@@ -212,5 +255,6 @@ volumes:
   user-data:
   restaurant-data:
   order-data:
+  delivery-data:
   redis-data:
   pgadmin-data:   # ✅ persist pgAdmin settings across restarts

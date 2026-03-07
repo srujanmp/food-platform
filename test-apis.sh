@@ -24,6 +24,7 @@ curl -s http://localhost:8001/api/v1/auth/health | jq '.'
 curl -s http://localhost:8002/api/v1/users/health | jq '.'
 curl -s http://localhost:8003/api/v1/restaurants/health | jq '.'
 curl -s http://localhost:8004/api/v1/orders/health | jq '.'
+curl -s http://localhost:8005/api/v1/delivery/health | jq '.'
 echo
 
 # internal endpoint check (not exposed to public)
@@ -555,8 +556,88 @@ if [ -n "$ORDER_ID" ]; then
   fi
 fi
 
-# Test 35: Delete Menu Item before restaurant (FK constraint)
-echo -e "${BLUE}[TEST 35] Delete Menu Item + Restaurant (owner)${NC}"
+# ── Delivery Service Tests ──────────────────────────────────────────────────
+
+# Test 35: Register a DRIVER
+echo -e "${BLUE}[TEST 35] Register DRIVER${NC}"
+DRIVER_TS=$(date +%s%N | cut -b1-13)
+DRIVER_PHONE="+1555$(printf '%07d' $((RANDOM * 32768 + RANDOM)))"
+DRIVER_REG=$(curl -s -X POST http://localhost:8001/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name":"Test Driver",
+    "email":"driver'$DRIVER_TS'@test.com",
+    "password":"Pass@12345",
+    "phone":"'$DRIVER_PHONE'",
+    "role":"DRIVER"
+  }')
+
+echo "$DRIVER_REG" | jq '.'
+DRIVER_TOKEN=$(echo "$DRIVER_REG" | jq -r '.access_token // empty')
+DRIVER_AUTH_ID=$(echo "$DRIVER_REG" | jq -r '.user.id // empty')
+
+if [ -z "$DRIVER_TOKEN" ]; then
+  echo -e "${RED}❌ Driver registration failed${NC}\n"
+else
+  echo -e "${GREEN}✓ Driver registered: auth_id=$DRIVER_AUTH_ID${NC}\n"
+fi
+
+# Wait for DRIVER_REGISTERED event to be consumed
+sleep 3
+
+# Test 36: Delivery Health Check
+echo -e "${BLUE}[TEST 36] Delivery Service Health${NC}"
+curl -s http://localhost:8005/api/v1/delivery/health | jq '.'
+echo
+
+# Test 37: Get Driver Profile (look up by driver table ID)
+echo -e "${BLUE}[TEST 37] Get Driver Profile${NC}"
+# Fetch driver ID from delivery DB
+DRIVER_ID=$(docker exec -i postgres-delivery psql -U postgres -d delivery_db -t -c \
+  "SELECT id FROM drivers WHERE auth_id = $DRIVER_AUTH_ID LIMIT 1;" 2>/dev/null | tr -d '[:space:]')
+
+if [ -n "$DRIVER_ID" ]; then
+  DRIVER_PROFILE=$(curl -s -H "Authorization: Bearer $DRIVER_TOKEN" \
+    http://localhost:8005/api/v1/delivery/driver/$DRIVER_ID)
+  echo "$DRIVER_PROFILE" | jq '.'
+  echo -e "${GREEN}✓ Driver profile found: id=$DRIVER_ID${NC}\n"
+else
+  echo -e "${RED}⚠ Driver not found in delivery_db (event may not be consumed yet)${NC}\n"
+fi
+
+# Test 38: Update Driver Location
+echo -e "${BLUE}[TEST 38] Update Driver Location${NC}"
+curl -s -X PATCH http://localhost:8005/api/v1/delivery/location \
+  -H "Authorization: Bearer $DRIVER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"latitude": 17.4000, "longitude": 78.5000}' | jq '.'
+echo
+
+# Test 39: Get Driver Orders (should be empty initially)
+echo -e "${BLUE}[TEST 39] Get Driver Orders${NC}"
+if [ -n "$DRIVER_ID" ]; then
+  curl -s -H "Authorization: Bearer $DRIVER_TOKEN" \
+    http://localhost:8005/api/v1/delivery/driver/$DRIVER_ID/orders | jq '.'
+  echo
+fi
+
+# Test 40: Track Order (if a delivery was assigned)
+echo -e "${BLUE}[TEST 40] Track Order${NC}"
+if [ -n "$ORDER_ID" ]; then
+  TRACK_RESP=$(curl -s -H "Authorization: Bearer $DRIVER_TOKEN" \
+    http://localhost:8005/api/v1/delivery/track/$ORDER_ID)
+  echo "$TRACK_RESP" | jq '.'
+  if echo "$TRACK_RESP" | jq -e '.order_id' > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ Tracking data available${NC}\n"
+  else
+    echo -e "${YELLOW}⚠ No delivery assigned for this order yet${NC}\n"
+  fi
+fi
+
+# ── Cleanup ─────────────────────────────────────────────────────────────────
+
+# Test 41: Delete Menu Item before restaurant (FK constraint)
+echo -e "${BLUE}[TEST 41] Delete Menu Item + Restaurant (owner)${NC}"
 if [ -n "$MENU_ITEM_ID" ]; then
   curl -s -X DELETE http://localhost:8003/api/v1/restaurants/$RESTAURANT_ID/menu/$MENU_ITEM_ID \
     -H "Authorization: Bearer $OWNER_TOKEN" | jq '.'
@@ -567,8 +648,8 @@ echo
 
 # ── Auth Cleanup Tests ──────────────────────────────────────────────────────
 
-# Test 27: Delete account (triggers USER_DELETED event)
-echo -e "${BLUE}[TEST 36] Delete Account (triggers event)${NC}"
+# Test 42: Delete account (triggers USER_DELETED event)
+echo -e "${BLUE}[TEST 42] Delete Account (triggers event)${NC}"
 log_req "DELETE" "http://localhost:8001/api/v1/auth/account" "$ACCESS_TOKEN" ""
 DELETE_RESPONSE=$(curl -s -X DELETE http://localhost:8001/api/v1/auth/account \
   -H "Authorization: Bearer $ACCESS_TOKEN")
@@ -579,8 +660,8 @@ echo
 # Wait for event processing
 sleep 2
 
-# Test 37: Verify profile was deleted and token rejected
-echo -e "${BLUE}[TEST 37] Verify Profile Deleted via Event${NC}"
+# Test 43: Verify profile was deleted and token rejected
+echo -e "${BLUE}[TEST 43] Verify Profile Deleted via Event${NC}"
 GET_DELETED=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $ACCESS_TOKEN" \
   http://localhost:8002/api/v1/users/$USER_ID)
 
@@ -591,8 +672,8 @@ else
   echo -e "${RED}⚠ Unexpected status: $GET_DELETED${NC}\n"
 fi
 
-# Test 38: Privilege escalation regression — ADMIN role must be rejected
-echo -e "${BLUE}[TEST 38] Privilege Escalation Regression (ADMIN role)${NC}"
+# Test 44: Privilege escalation regression — ADMIN role must be rejected
+echo -e "${BLUE}[TEST 44] Privilege Escalation Regression (ADMIN role)${NC}"
 ADMIN_STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8001/api/v1/auth/register \
   -H 'Content-Type: application/json' \
   -d '{"name":"hacker","email":"hacker@x.com","password":"Pass@12345","phone":"+15559999999","role":"ADMIN"}')
@@ -603,8 +684,8 @@ else
   echo -e "${RED}⚠ Expected 400, got $ADMIN_STATUS${NC}\n"
 fi
 
-# Test 39: Deleted user login regression — must be rejected
-echo -e "${BLUE}[TEST 39] Deleted User Login Regression${NC}"
+# Test 45: Deleted user login regression — must be rejected
+echo -e "${BLUE}[TEST 45] Deleted User Login Regression${NC}"
 DELETED_LOGIN_STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8001/api/v1/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"email":"'$EMAIL'","password":"'$PASSWORD'"}')

@@ -1,6 +1,6 @@
-module github.com/food-platform/restaurant-service
+module github.com/food-platform/delivery-service
 
-go 1.26.0
+go 1.26
 
 require (
 	github.com/gin-contrib/cors v1.7.6
@@ -9,6 +9,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/rabbitmq/amqp091-go v1.10.0
 	github.com/redis/go-redis/v9 v9.18.0
+	github.com/sony/gobreaker v0.5.0
 	go.uber.org/zap v1.27.1
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1

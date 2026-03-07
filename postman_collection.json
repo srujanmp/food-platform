@@ -8,6 +8,7 @@
     { "key": "USER_URL", "value": "http://localhost:8002/api/v1" },
     { "key": "RESTAURANT_URL", "value": "http://localhost:8003/api/v1" },
     { "key": "ORDER_URL", "value": "http://localhost:8004/api/v1" },
+    { "key": "DELIVERY_URL", "value": "http://localhost:8005/api/v1" },
     { "key": "ACCESS_TOKEN", "value": "" },
     { "key": "REFRESH_TOKEN", "value": "" },
     { "key": "USER_ID", "value": "" },
@@ -19,7 +20,9 @@
     { "key": "MENU_ITEM_ID", "value": "" },
     { "key": "ADMIN_TOKEN", "value": "" },
     { "key": "ORDER_ID", "value": "" },
-    { "key": "IDEMPOTENCY_KEY", "value": "" }
+    { "key": "IDEMPOTENCY_KEY", "value": "" },
+    { "key": "DRIVER_ID", "value": "" },
+    { "key": "DRIVER_TOKEN", "value": "" }
   ],
   "auth": {
     "type": "bearer",
@@ -704,6 +707,134 @@
               "raw": "{\n  \"status\": \"OUT_FOR_DELIVERY\"\n}"
             },
             "description": "Internal/delivery system endpoint (no JWT). Allowed: OUT_FOR_DELIVERY, DELIVERED, FAILED"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Delivery Service",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "url": "{{DELIVERY_URL}}/delivery/health",
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "Register DRIVER",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const ts = Date.now();",
+                  "pm.collectionVariables.set('EMAIL', 'driver' + ts + '@test.com');",
+                  "pm.collectionVariables.set('PHONE', '+1555' + ts.toString().slice(-7));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('DRIVER_TOKEN', body.access_token);",
+                  "  pm.collectionVariables.set('DRIVER_ID', body.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{AUTH_URL}}/register",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Driver\",\n  \"email\": \"{{EMAIL}}\",\n  \"password\": \"{{PASSWORD}}\",\n  \"phone\": \"{{PHONE}}\",\n  \"role\": \"DRIVER\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Driver Profile",
+          "request": {
+            "method": "GET",
+            "url": "{{DELIVERY_URL}}/delivery/driver/{{DRIVER_ID}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{DRIVER_TOKEN}}" }]
+            }
+          }
+        },
+        {
+          "name": "Get Driver Orders",
+          "request": {
+            "method": "GET",
+            "url": "{{DELIVERY_URL}}/delivery/driver/{{DRIVER_ID}}/orders",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{DRIVER_TOKEN}}" }]
+            }
+          }
+        },
+        {
+          "name": "Update Location",
+          "request": {
+            "method": "PATCH",
+            "url": "{{DELIVERY_URL}}/delivery/location",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{DRIVER_TOKEN}}" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 17.4000,\n  \"longitude\": 78.5000\n}"
+            }
+          }
+        },
+        {
+          "name": "Update Delivery Status (OUT_FOR_DELIVERY)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{DELIVERY_URL}}/delivery/{{ORDER_ID}}/status",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{DRIVER_TOKEN}}" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"OUT_FOR_DELIVERY\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Update Delivery Status (DELIVERED)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{DELIVERY_URL}}/delivery/{{ORDER_ID}}/status",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{DRIVER_TOKEN}}" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"DELIVERED\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Track Order",
+          "request": {
+            "method": "GET",
+            "url": "{{DELIVERY_URL}}/delivery/track/{{ORDER_ID}}",
+            "description": "Live tracking — returns driver lat/lng + delivery status"
           }
         }
       ]

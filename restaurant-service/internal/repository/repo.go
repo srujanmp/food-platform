@@ -32,6 +32,8 @@ type MenuItemRepository interface {
 
 type OutboxRepository interface {
 	Create(tx *gorm.DB, event *models.OutboxEvent) error
+	ListUnpublished(limit int) ([]models.OutboxEvent, error)
+	MarkPublished(id uint) error
 }
 
 // ── Restaurant implementation ──────────────────────────────────
@@ -156,12 +158,22 @@ func (r *menuItemRepo) Delete(id uint) error {
 
 // ── Outbox implementation ──────────────────────────────────────
 
-type outboxRepo struct{}
+type outboxRepo struct{ db *gorm.DB }
 
-func NewOutboxRepository() OutboxRepository {
-	return &outboxRepo{}
+func NewOutboxRepository(db *gorm.DB) OutboxRepository {
+	return &outboxRepo{db: db}
 }
 
 func (r *outboxRepo) Create(tx *gorm.DB, event *models.OutboxEvent) error {
 	return tx.Create(event).Error
+}
+
+func (r *outboxRepo) ListUnpublished(limit int) ([]models.OutboxEvent, error) {
+	var events []models.OutboxEvent
+	err := r.db.Where("published = ?", false).Order("id ASC").Limit(limit).Find(&events).Error
+	return events, err
+}
+
+func (r *outboxRepo) MarkPublished(id uint) error {
+	return r.db.Model(&models.OutboxEvent{}).Where("id = ?", id).Update("published", true).Error
 }
