@@ -107,7 +107,7 @@ services:
       USER_SERVICE_URL:          "http://user-service:8002"
       RABBITMQ_URL:              "amqp://guest:guest@rabbitmq:5672/"
       ADMIN_EMAIL:               "admin@admin.com"
-      ADMIN_PASSWORD:             "admin"
+      ADMIN_PASSWORD:             "adminadmin"
     depends_on:
       postgres-auth:
         condition: service_healthy

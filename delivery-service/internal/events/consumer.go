@@ -76,15 +76,21 @@ func (c *Consumer) handleOrderPrepared(msg amqp091.Delivery) {
 
 	c.logger.Info("ORDER_PREPARED received", zap.Uint("order_id", payload.OrderID))
 
-	if err := c.svc.AssignDriver(payload.OrderID, payload.UserID); err != nil {
-		c.logger.Error("ORDER_PREPARED: assign driver failed", zap.Error(err), zap.Uint("order_id", payload.OrderID))
-		// Requeue for retry
+	// Persist to pending_assignments so a poller can retry if assignment fails now.
+	if err := c.svc.EnqueueAssignment(payload.OrderID, payload.UserID); err != nil {
+		c.logger.Error("ORDER_PREPARED: failed to persist pending assignment", zap.Error(err), zap.Uint("order_id", payload.OrderID))
 		msg.Nack(false, true) //nolint:errcheck
 		return
 	}
 
+	// Try immediate assignment; failures are fine — the poller will retry.
+	if err := c.svc.AssignDriver(payload.OrderID, payload.UserID); err != nil {
+		c.logger.Warn("ORDER_PREPARED: assign driver deferred", zap.Error(err), zap.Uint("order_id", payload.OrderID))
+	} else {
+		c.logger.Info("ORDER_PREPARED handled", zap.Uint("order_id", payload.OrderID))
+	}
+
 	msg.Ack(false) //nolint:errcheck
-	c.logger.Info("ORDER_PREPARED handled", zap.Uint("order_id", payload.OrderID))
 }
 
 func (c *Consumer) consumeUserCreated() {

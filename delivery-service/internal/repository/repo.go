@@ -32,6 +32,13 @@ type OutboxRepository interface {
 	MarkPublished(id uint) error
 }
 
+// PendingAssignmentRepository for tracking unassigned ORDER_PREPARED events.
+type PendingAssignmentRepository interface {
+	Upsert(orderID, userID uint) error
+	ListPending(limit int) ([]models.PendingAssignment, error)
+	Delete(orderID uint) error
+}
+
 // ── GORM implementations ────────────────────────────────────────────────────
 
 // driverRepo implements DriverRepository.
@@ -134,4 +141,27 @@ func (r *outboxRepo) ListUnpublished(limit int) ([]models.OutboxEvent, error) {
 
 func (r *outboxRepo) MarkPublished(id uint) error {
 	return r.db.Model(&models.OutboxEvent{}).Where("id = ?", id).Update("published", true).Error
+}
+
+// pendingAssignmentRepo implements PendingAssignmentRepository.
+type pendingAssignmentRepo struct{ db *gorm.DB }
+
+func NewPendingAssignmentRepository(db *gorm.DB) PendingAssignmentRepository {
+	return &pendingAssignmentRepo{db: db}
+}
+
+func (r *pendingAssignmentRepo) Upsert(orderID, userID uint) error {
+	pa := models.PendingAssignment{OrderID: orderID, UserID: userID}
+	result := r.db.Where("order_id = ?", orderID).FirstOrCreate(&pa)
+	return result.Error
+}
+
+func (r *pendingAssignmentRepo) ListPending(limit int) ([]models.PendingAssignment, error) {
+	var list []models.PendingAssignment
+	err := r.db.Order("id").Limit(limit).Find(&list).Error
+	return list, err
+}
+
+func (r *pendingAssignmentRepo) Delete(orderID uint) error {
+	return r.db.Where("order_id = ?", orderID).Delete(&models.PendingAssignment{}).Error
 }

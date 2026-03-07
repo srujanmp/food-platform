@@ -64,7 +64,7 @@ func main() {
 	}
 
 	// Auto-migrate
-	if err := db.AutoMigrate(&models.Driver{}, &models.Delivery{}, &models.OutboxEvent{}); err != nil {
+	if err := db.AutoMigrate(&models.Driver{}, &models.Delivery{}, &models.OutboxEvent{}, &models.PendingAssignment{}); err != nil {
 		logger.Fatal("automigrate failed", zap.Error(err))
 	}
 
@@ -72,8 +72,9 @@ func main() {
 	driverRepo := repository.NewDriverRepository(db)
 	deliveryRepo := repository.NewDeliveryRepository(db)
 	outboxRepo := repository.NewOutboxRepository(db)
+	pendingRepo := repository.NewPendingAssignmentRepository(db)
 
-	deliverySvc := service.NewDeliveryService(driverRepo, deliveryRepo, outboxRepo, db, cfg.OrderServiceURL)
+	deliverySvc := service.NewDeliveryService(driverRepo, deliveryRepo, outboxRepo, pendingRepo, db, cfg.OrderServiceURL)
 	deliveryH := handlers.NewDeliveryHandler(deliverySvc)
 
 	// ── RabbitMQ Consumers ────────────────────────────────────────────────────
@@ -121,6 +122,16 @@ func main() {
 				if err := outboxRepo.MarkPublished(ev.ID); err != nil {
 					logger.Error("failed to mark published", zap.Error(err))
 				}
+			}
+		}
+	}()
+
+	// ── Pending assignment retry poller ───────────────────────────────────────
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		for range ticker.C {
+			if err := deliverySvc.RetryPendingAssignments(); err != nil {
+				logger.Error("pending assignment retry failed", zap.Error(err))
 			}
 		}
 	}()

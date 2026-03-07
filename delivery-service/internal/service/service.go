@@ -34,6 +34,8 @@ type DeliveryService interface {
 	GetTracking(orderID uint) (*models.TrackingResponse, error)
 	AssignDriver(orderID uint, userID uint) error
 	CreateDriver(authID uint, name, phone string) error
+	EnqueueAssignment(orderID, userID uint) error
+	RetryPendingAssignments() error
 }
 
 // deliveryService is the concrete implementation.
@@ -41,6 +43,7 @@ type deliveryService struct {
 	driverRepo   repository.DriverRepository
 	deliveryRepo repository.DeliveryRepository
 	outboxRepo   repository.OutboxRepository
+	pendingRepo  repository.PendingAssignmentRepository
 	db           *gorm.DB
 	httpClient   *http.Client
 	cb           *gobreaker.CircuitBreaker
@@ -52,6 +55,7 @@ func NewDeliveryService(
 	driverRepo repository.DriverRepository,
 	deliveryRepo repository.DeliveryRepository,
 	outboxRepo repository.OutboxRepository,
+	pendingRepo repository.PendingAssignmentRepository,
 	db *gorm.DB,
 	orderSvcURL string,
 ) DeliveryService {
@@ -68,6 +72,7 @@ func NewDeliveryService(
 		driverRepo:   driverRepo,
 		deliveryRepo: deliveryRepo,
 		outboxRepo:   outboxRepo,
+		pendingRepo:  pendingRepo,
 		db:           db,
 		httpClient:   &http.Client{Timeout: 3 * time.Second},
 		cb:           cb,
@@ -213,7 +218,18 @@ func (s *deliveryService) GetTracking(orderID uint) (*models.TrackingResponse, e
 
 // AssignDriver is called by the ORDER_PREPARED consumer.
 func (s *deliveryService) AssignDriver(orderID uint, userID uint) error {
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	// Idempotency: if a delivery already exists for this order, skip.
+	existing, err := s.deliveryRepo.GetByOrderID(orderID)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		// Clean up pending assignment if it exists.
+		s.pendingRepo.Delete(orderID) //nolint:errcheck
+		return nil
+	}
+
+	err = s.db.Transaction(func(tx *gorm.DB) error {
 		driver, err := s.driverRepo.FindAvailable()
 		if err != nil {
 			return err
@@ -249,6 +265,29 @@ func (s *deliveryService) AssignDriver(orderID uint, userID uint) error {
 		}
 		return s.outboxRepo.Create(tx, e)
 	})
+	if err == nil {
+		s.pendingRepo.Delete(orderID) //nolint:errcheck
+	}
+	return err
+}
+
+// EnqueueAssignment persists an ORDER_PREPARED event so the poller can retry.
+func (s *deliveryService) EnqueueAssignment(orderID, userID uint) error {
+	return s.pendingRepo.Upsert(orderID, userID)
+}
+
+// RetryPendingAssignments is called periodically to assign drivers to pending orders.
+func (s *deliveryService) RetryPendingAssignments() error {
+	pending, err := s.pendingRepo.ListPending(20)
+	if err != nil {
+		return err
+	}
+	for _, pa := range pending {
+		if err := s.AssignDriver(pa.OrderID, pa.UserID); err != nil {
+			continue // will retry next tick
+		}
+	}
+	return nil
 }
 
 // CreateDriver is called by the DRIVER_REGISTERED consumer.

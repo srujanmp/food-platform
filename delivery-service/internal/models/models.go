@@ -73,6 +73,14 @@ type OutboxEvent struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// PendingAssignment tracks ORDER_PREPARED events that haven't been assigned yet.
+type PendingAssignment struct {
+	ID        uint      `gorm:"primaryKey;autoIncrement"`
+	OrderID   uint      `gorm:"uniqueIndex;not null"`
+	UserID    uint      `gorm:"not null"`
+	CreatedAt time.Time `gorm:"default:now()"`
+}
+
 // ── Request/Response DTOs ────────────────────────────────────────────────────
 
 type UpdateLocationRequest struct {

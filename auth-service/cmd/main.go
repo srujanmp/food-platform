@@ -161,6 +161,14 @@ func seedAdmin(db *gorm.DB, publisher events.Publisher, logger *zap.Logger, cfg 
 	var user models.User
 	err := db.Where("email = ?", cfg.AdminEmail).First(&user).Error
 	if err == nil {
+		// Admin exists — ensure password is up-to-date.
+		if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(cfg.AdminPassword)) != nil {
+			hashed, hErr := bcrypt.GenerateFromPassword([]byte(cfg.AdminPassword), 12)
+			if hErr == nil {
+				db.Model(&user).Update("password", string(hashed))
+				logger.Info("seedAdmin: admin password updated")
+			}
+		}
 		return
 	}
 	if err != gorm.ErrRecordNotFound {
