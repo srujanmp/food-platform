@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -24,6 +25,7 @@ type RestaurantService interface {
 	Create(ownerID uint, req *models.CreateRestaurantRequest) (*models.Restaurant, error)
 	GetByID(id uint) (*models.Restaurant, error)
 	GetByIDWithMenu(id uint) (*models.Restaurant, error)
+	ListAll() ([]models.Restaurant, error)
 	ListApprovedOpen() ([]models.Restaurant, error)
 	Search(query string) ([]models.Restaurant, error)
 	Nearby(lat, lng, radiusKm float64) ([]models.Restaurant, error)
@@ -82,6 +84,10 @@ func (s *restaurantService) GetByIDWithMenu(id uint) (*models.Restaurant, error)
 		return nil, ErrNotFound
 	}
 	return r, nil
+}
+
+func (s *restaurantService) ListAll() ([]models.Restaurant, error) {
+	return s.repo.ListAll()
 }
 
 func (s *restaurantService) ListApprovedOpen() ([]models.Restaurant, error) {
@@ -201,15 +207,28 @@ func (s *restaurantService) UpdateOrderStatus(restaurantID uint, callerID uint, 
 		return fmt.Errorf("order-service unreachable: %w", err)
 	}
 	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("order-service returned %d", resp.StatusCode)
 	}
 
 	// If PREPARED, write outbox event in a transaction
 	if req.Status == "PREPARED" {
+		// Extract user_id from the order-service response
+		var orderResp struct {
+			Order struct {
+				UserID uint `json:"user_id"`
+			} `json:"order"`
+		}
+		var userID uint
+		if json.Unmarshal(respBody, &orderResp) == nil {
+			userID = orderResp.Order.UserID
+		}
+
 		payload, _ := json.Marshal(map[string]interface{}{
 			"order_id":      req.OrderID,
 			"restaurant_id": restaurantID,
+			"user_id":       userID,
 		})
 		return s.db.Transaction(func(tx *gorm.DB) error {
 			return s.outboxRepo.Create(tx, &models.OutboxEvent{

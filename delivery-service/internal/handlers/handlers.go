@@ -37,6 +37,7 @@ func (h *DeliveryHandler) RegisterRoutes(rg *gin.RouterGroup, jwtSecret string) 
 	driver := delivery.Group("")
 	driver.Use(auth, middleware.RequireRole("DRIVER"))
 	{
+		driver.GET("/driver/by-auth/:authId", h.GetDriverByAuth)
 		driver.GET("/driver/:driverId", h.GetDriver)
 		driver.GET("/driver/:driverId/orders", h.GetDriverOrders)
 		driver.PATCH("/location", h.UpdateLocation)
@@ -66,6 +67,31 @@ func (h *DeliveryHandler) GetDriver(c *gin.Context) {
 	}
 
 	// Get active order for this driver
+	activeOrder, _ := h.svc.GetActiveOrderForDriver(driver.ID)
+
+	c.JSON(http.StatusOK, gin.H{
+		"driver":       driver,
+		"active_order": activeOrder,
+	})
+}
+
+func (h *DeliveryHandler) GetDriverByAuth(c *gin.Context) {
+	authID, err := strconv.Atoi(c.Param("authId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid_auth_id"})
+		return
+	}
+
+	driver, err := h.svc.GetDriverByAuthID(uint(authID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal_server_error"})
+		return
+	}
+	if driver == nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "driver_not_found"})
+		return
+	}
+
 	activeOrder, _ := h.svc.GetActiveOrderForDriver(driver.ID)
 
 	c.JSON(http.StatusOK, gin.H{

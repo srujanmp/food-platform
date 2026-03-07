@@ -14,6 +14,7 @@ type RestaurantRepository interface {
 	Create(r *models.Restaurant) error
 	GetByID(id uint) (*models.Restaurant, error)
 	GetByIDWithMenu(id uint) (*models.Restaurant, error)
+	ListAll() ([]models.Restaurant, error)
 	ListApprovedOpen() ([]models.Restaurant, error)
 	ListByOwner(ownerID uint) ([]models.Restaurant, error)
 	Search(query string) ([]models.Restaurant, error)
@@ -64,6 +65,12 @@ func (r *restaurantRepo) GetByIDWithMenu(id uint) (*models.Restaurant, error) {
 		return nil, nil
 	}
 	return &rest, err
+}
+
+func (r *restaurantRepo) ListAll() ([]models.Restaurant, error) {
+	var restaurants []models.Restaurant
+	err := r.db.Order("created_at DESC").Find(&restaurants).Error
+	return restaurants, err
 }
 
 func (r *restaurantRepo) ListApprovedOpen() ([]models.Restaurant, error) {

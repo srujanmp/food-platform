@@ -261,7 +261,10 @@ func (s *orderService) CancelOrder(userID uint, orderID uint) error {
 		}
 		e := &models.OutboxEvent{
 			EventType: "ORDER_CANCELLED",
-			Payload:   models.JSONMap{"order_id": order.ID},
+			Payload: models.JSONMap{
+				"order_id": order.ID,
+				"user_id":  order.UserID,
+			},
 		}
 		return s.outboxRepo.Create(tx, e)
 	})

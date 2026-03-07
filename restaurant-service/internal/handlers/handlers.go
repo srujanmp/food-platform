@@ -370,3 +370,13 @@ func (h *InternalHandler) GetMenuItem(c *gin.Context) {
 		"is_available": item.IsAvailable,
 	})
 }
+
+// GET /api/v1/internal/restaurants  [Internal] — all restaurants (admin use)
+func (h *InternalHandler) ListAll(c *gin.Context) {
+	restaurants, err := h.restSvc.ListAll()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal error"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"restaurants": restaurants})
+}

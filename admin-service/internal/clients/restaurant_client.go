@@ -34,10 +34,10 @@ func NewRestaurantClient(baseURL string) *RestaurantClient {
 	}
 }
 
-// ListRestaurants calls GET /api/v1/restaurants
+// ListRestaurants calls GET /api/v1/internal/restaurants (all restaurants, including unapproved)
 func (c *RestaurantClient) ListRestaurants() ([]byte, int, error) {
 	body, err := c.cb.Execute(func() (interface{}, error) {
-		resp, err := c.http.Get(c.baseURL + "/api/v1/restaurants")
+		resp, err := c.http.Get(c.baseURL + "/api/v1/internal/restaurants")
 		if err != nil {
 			return nil, err
 		}

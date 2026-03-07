@@ -178,6 +178,7 @@ func (s *deliveryService) UpdateDeliveryStatus(authID uint, orderID uint, status
 			Payload: models.JSONMap{
 				"order_id":  orderID,
 				"driver_id": driver.ID,
+				"user_id":   delivery.UserID,
 				"status":    status,
 			},
 		}
@@ -224,6 +225,7 @@ func (s *deliveryService) AssignDriver(orderID uint, userID uint) error {
 		delivery := &models.Delivery{
 			OrderID:    orderID,
 			DriverID:   driver.ID,
+			UserID:     userID,
 			Status:     "ASSIGNED",
 			AssignedAt: time.Now(),
 		}

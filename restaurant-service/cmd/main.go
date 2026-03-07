@@ -115,6 +115,7 @@ func main() {
 	v1.GET("/restaurants/:id/menu", menuItemH.List)
 
 	// ── Internal routes (no JWT — Docker-network only) ───────
+	v1.GET("/internal/restaurants", internalH.ListAll)
 	v1.GET("/internal/restaurants/:id", internalH.GetRestaurant)
 	v1.GET("/internal/restaurants/:id/menu/:itemId", internalH.GetMenuItem)
 

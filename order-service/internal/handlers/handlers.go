@@ -168,7 +168,13 @@ func (h *OrderHandler) UpdateStatus(c *gin.Context) {
 		}
 		return
 	}
-	c.JSON(http.StatusOK, models.SuccessResponse{Message: "status_updated"})
+	// Return the updated order so callers can read user_id, restaurant_id, etc.
+	order, err := h.svc.GetOrder(uint(id))
+	if err != nil || order == nil {
+		c.JSON(http.StatusOK, models.SuccessResponse{Message: "status_updated"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "status_updated", "order": order})
 }
 
 func (h *OrderHandler) GetStats(c *gin.Context) {

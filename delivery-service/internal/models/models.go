@@ -55,6 +55,7 @@ type Delivery struct {
 	ID          uint       `gorm:"primaryKey;autoIncrement" json:"id"`
 	OrderID     uint       `gorm:"uniqueIndex;not null"     json:"order_id"`
 	DriverID    uint       `gorm:"not null"                 json:"driver_id"`
+	UserID      uint       `gorm:"not null;default:0"       json:"user_id"`
 	Status      string     `gorm:"size:30;not null;default:ASSIGNED" json:"status"`
 	AssignedAt  time.Time  `gorm:"not null;default:now()"   json:"assigned_at"`
 	DeliveredAt *time.Time `                                json:"delivered_at,omitempty"`
