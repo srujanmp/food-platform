@@ -55,16 +55,21 @@ type Order struct {
 
 // Payment represents a row in the payments table.
 type Payment struct {
-	ID             uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	OrderID        uint      `gorm:"uniqueIndex;not null" json:"order_id"`
-	UserID         uint      `gorm:"not null" json:"user_id"`
-	Amount         float64   `gorm:"not null" json:"amount"`
-	Currency       string    `gorm:"default:INR" json:"currency"`
-	Status         string    `gorm:"not null" json:"status"`
-	Gateway        string    `json:"gateway,omitempty"`
-	GatewayTxnID   string    `gorm:"uniqueIndex" json:"gateway_txn_id,omitempty"`
-	IdempotencyKey string    `gorm:"uniqueIndex;not null" json:"-"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID                uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	OrderID           uint      `gorm:"uniqueIndex;not null" json:"order_id"`
+	UserID            uint      `gorm:"not null" json:"user_id"`
+	Amount            float64   `gorm:"not null" json:"amount"`
+	AmountPaise       int64     `gorm:"not null" json:"amount_paise"`
+	Currency          string    `gorm:"default:INR" json:"currency"`
+	Status            string    `gorm:"not null" json:"status"`
+	Gateway           string    `json:"gateway,omitempty"`
+	GatewayTxnID      string    `gorm:"uniqueIndex" json:"gateway_txn_id,omitempty"`
+	ProviderOrderID   string    `gorm:"uniqueIndex" json:"provider_order_id,omitempty"`
+	ProviderSignature string    `json:"provider_signature,omitempty"`
+	FailureCode       string    `json:"failure_code,omitempty"`
+	FailureReason     string    `json:"failure_reason,omitempty"`
+	IdempotencyKey    string    `gorm:"uniqueIndex;not null" json:"-"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 // OutboxEvent mirrors the outbox_events table.
@@ -83,6 +88,17 @@ type PlaceOrderRequest struct {
 	MenuItemID      uint   `json:"menu_item_id" binding:"required"`
 	DeliveryAddress string `json:"delivery_address" binding:"required"`
 	Notes           string `json:"notes"`
+}
+
+type VerifyPaymentRequest struct {
+	OrderID           uint   `json:"order_id" binding:"required"`
+	RazorpayOrderID   string `json:"razorpay_order_id" binding:"required"`
+	RazorpayPaymentID string `json:"razorpay_payment_id" binding:"required"`
+	RazorpaySignature string `json:"razorpay_signature" binding:"required"`
+}
+
+type PaymentStatusResponse struct {
+	Payment *Payment `json:"payment"`
 }
 
 // CancelOrderRequest is empty; path param used instead.

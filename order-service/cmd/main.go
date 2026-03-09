@@ -66,7 +66,8 @@ func main() {
 	outboxRepo := repository.NewOutboxRepository(db)
 
 	// services
-	orderSvc := service.NewOrderService(orderRepo, paymentRepo, outboxRepo, db, cfg.RestaurantSvcURL)
+	razorpayClient := service.NewRazorpayClient(cfg.RazorpayKeyID, cfg.RazorpayKeySecret, cfg.RazorpayWebhookSecret, &http.Client{Timeout: 5 * time.Second})
+	orderSvc := service.NewOrderService(orderRepo, paymentRepo, outboxRepo, db, cfg.RestaurantSvcURL, razorpayClient)
 
 	// handlers
 	orderH := handlers.NewOrderHandler(orderSvc)

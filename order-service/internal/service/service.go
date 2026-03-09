@@ -1,16 +1,17 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"time"
 
 	"github.com/food-platform/order-service/internal/models"
 	"github.com/food-platform/order-service/internal/repository"
+	"github.com/google/uuid"
 	"github.com/sony/gobreaker"
 	"gorm.io/gorm"
 )
@@ -27,7 +28,10 @@ var (
 
 // OrderService defines business operations used by handlers.
 type OrderService interface {
-	PlaceOrder(userID uint, key string, req *models.PlaceOrderRequest) (*models.Order, error)
+	PlaceOrder(userID uint, key string, req *models.PlaceOrderRequest) (*models.Order, *models.Payment, error)
+	VerifyPayment(req *models.VerifyPaymentRequest) (*models.Order, error)
+	GetPaymentByOrder(orderID uint) (*models.Payment, error)
+	HandleRazorpayWebhook(signature string, body []byte) error
 	GetOrder(id uint) (*models.Order, error)
 	ListByUser(userID uint) ([]models.Order, error)
 	ListByRestaurant(restID uint) ([]models.Order, error)
@@ -46,10 +50,11 @@ type orderService struct {
 	httpClient    *http.Client
 	cb            *gobreaker.CircuitBreaker
 	restaurantURL string
+	razorpay      RazorpayClient
 }
 
 // NewOrderService constructs a service with dependencies.
-func NewOrderService(repo repository.OrderRepository, payRepo repository.PaymentRepository, outboxRepo repository.OutboxRepository, db *gorm.DB, restaurantURL string) OrderService {
+func NewOrderService(repo repository.OrderRepository, payRepo repository.PaymentRepository, outboxRepo repository.OutboxRepository, db *gorm.DB, restaurantURL string, razorpay RazorpayClient) OrderService {
 	cb := gobreaker.NewCircuitBreaker(gobreaker.Settings{
 		Name:        "restaurant-client",
 		MaxRequests: 1,
@@ -67,38 +72,45 @@ func NewOrderService(repo repository.OrderRepository, payRepo repository.Payment
 		httpClient:    &http.Client{Timeout: 3 * time.Second},
 		cb:            cb,
 		restaurantURL: restaurantURL,
+		razorpay:      razorpay,
 	}
 }
 
 // PlaceOrder implements the full order placement flow:
 // 1. Idempotency check  2. Validate restaurant  3. Validate menu item + snapshot
 // 4. Simulate payment   5. Atomic DB write (order + payment + outbox)
-func (s *orderService) PlaceOrder(userID uint, key string, req *models.PlaceOrderRequest) (*models.Order, error) {
+func (s *orderService) PlaceOrder(userID uint, key string, req *models.PlaceOrderRequest) (*models.Order, *models.Payment, error) {
 	// 1. idempotency check
 	existing, err := s.payRepo.GetByIdempotencyKey(key)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if existing != nil {
-		return nil, ErrIdempotencyExists
+		return nil, nil, ErrIdempotencyExists
 	}
 
 	// 2. validate restaurant via internal API
 	restInfo, err := s.fetchRestaurant(req.RestaurantID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !restInfo.IsApproved || !restInfo.IsOpen {
-		return nil, ErrRestaurantUnavail
+		return nil, nil, ErrRestaurantUnavail
 	}
 
 	// 3. validate menu item + snapshot name/price
 	menuInfo, err := s.fetchMenuItem(req.RestaurantID, req.MenuItemID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !menuInfo.IsAvailable {
-		return nil, ErrMenuItemUnavail
+		return nil, nil, ErrMenuItemUnavail
+	}
+
+	amountPaise := int64(menuInfo.Price * 100)
+	rzpOrder, err := s.razorpay.CreateOrder(key, amountPaise, "INR")
+	if err != nil {
+		return nil, nil, err
 	}
 
 	order := &models.Order{
@@ -109,18 +121,20 @@ func (s *orderService) PlaceOrder(userID uint, key string, req *models.PlaceOrde
 		Notes:           req.Notes,
 		ItemName:        menuInfo.Name,
 		ItemPrice:       menuInfo.Price,
-		Status:          "PLACED",
+		Status:          "PENDING_PAYMENT",
 		IdempotencyKey:  key,
 	}
 
-	// 4. simulate payment
+	// 4. create pending payment
 	payment := &models.Payment{
-		UserID:         userID,
-		Amount:         menuInfo.Price,
-		Status:         "SUCCESS",
-		Gateway:        "razorpay",
-		GatewayTxnID:   fmt.Sprintf("txn_%d", rand.Int()),
-		IdempotencyKey: key,
+		UserID:          userID,
+		Amount:          menuInfo.Price,
+		AmountPaise:     amountPaise,
+		Status:          "CREATED",
+		Gateway:         "razorpay",
+		ProviderOrderID: rzpOrder.ID,
+		IdempotencyKey:  key,
+		GatewayTxnID:    uuid.NewString(), // ensure unique value
 	}
 
 	// 5. atomic transaction
@@ -132,15 +146,62 @@ func (s *orderService) PlaceOrder(userID uint, key string, req *models.PlaceOrde
 		if err := s.payRepo.Create(tx, payment); err != nil {
 			return err
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return order, payment, nil
+}
+
+func (s *orderService) VerifyPayment(req *models.VerifyPaymentRequest) (*models.Order, error) {
+	pay, err := s.payRepo.GetByOrder(req.OrderID)
+	if err != nil {
+		return nil, err
+	}
+	if pay == nil {
+		return nil, ErrNotFound
+	}
+	if pay.Status == "SUCCESS" {
+		return s.repo.GetByID(req.OrderID)
+	}
+	if pay.ProviderOrderID != req.RazorpayOrderID {
+		return nil, errors.New("provider_order_mismatch")
+	}
+	if !s.razorpay.VerifyPaymentSignature(req.RazorpayOrderID, req.RazorpayPaymentID, req.RazorpaySignature) {
+		return nil, errors.New("invalid_payment_signature")
+	}
+
+	order, err := s.repo.GetByID(req.OrderID)
+	if err != nil || order == nil {
+		return nil, ErrNotFound
+	}
+
+	restInfo, err := s.fetchRestaurant(order.RestaurantID)
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		pay.Status = "SUCCESS"
+		pay.GatewayTxnID = req.RazorpayPaymentID
+		pay.ProviderSignature = req.RazorpaySignature
+		if err := s.payRepo.Update(tx, pay); err != nil {
+			return err
+		}
+		order.Status = "PLACED"
+		if err := s.repo.Update(tx, order); err != nil {
+			return err
+		}
 		e := &models.OutboxEvent{
 			EventType: "ORDER_PLACED",
 			Payload: models.JSONMap{
 				"order_id":            order.ID,
-				"user_id":             userID,
+				"user_id":             order.UserID,
 				"restaurant_id":       order.RestaurantID,
 				"item_name":           order.ItemName,
 				"item_price":          order.ItemPrice,
-				"amount":              payment.Amount,
+				"amount":              pay.Amount,
 				"restaurant_owner_id": restInfo.OwnerID,
 			},
 		}
@@ -150,6 +211,62 @@ func (s *orderService) PlaceOrder(userID uint, key string, req *models.PlaceOrde
 		return nil, err
 	}
 	return order, nil
+}
+
+func (s *orderService) GetPaymentByOrder(orderID uint) (*models.Payment, error) {
+	return s.payRepo.GetByOrder(orderID)
+}
+
+func (s *orderService) HandleRazorpayWebhook(signature string, body []byte) error {
+	if !s.razorpay.VerifyWebhookSignature(body, signature) {
+		return errors.New("invalid_webhook_signature")
+	}
+	var payload struct {
+		Event   string `json:"event"`
+		Payload struct {
+			Payment struct {
+				Entity struct {
+					ID               string `json:"id"`
+					OrderID          string `json:"order_id"`
+					ErrorCode        string `json:"error_code"`
+					ErrorDescription string `json:"error_description"`
+				} `json:"entity"`
+			} `json:"payment"`
+		} `json:"payload"`
+	}
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&payload); err != nil {
+		return err
+	}
+	pay, err := s.payRepo.GetByProviderOrderID(payload.Payload.Payment.Entity.OrderID)
+	if err != nil || pay == nil {
+		return err
+	}
+	if payload.Event == "payment.captured" {
+		pay.Status = "SUCCESS"
+		pay.GatewayTxnID = payload.Payload.Payment.Entity.ID
+	} else if payload.Event == "payment.failed" {
+		pay.Status = "FAILED"
+		pay.FailureCode = payload.Payload.Payment.Entity.ErrorCode
+		pay.FailureReason = payload.Payload.Payment.Entity.ErrorDescription
+	} else {
+		return nil
+	}
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.payRepo.Update(tx, pay); err != nil {
+			return err
+		}
+		order, err := s.repo.GetByID(pay.OrderID)
+		if err != nil || order == nil {
+			return err
+		}
+		if payload.Event == "payment.captured" && order.Status == "PENDING_PAYMENT" {
+			order.Status = "PLACED"
+			if err := s.repo.Update(tx, order); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // ── restaurant-service HTTP helpers ─────────────────────────────

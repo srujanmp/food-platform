@@ -16,28 +16,34 @@ import (
 
 // Config holds all environment variables used by order-service.
 type Config struct {
-	AppEnv            string
-	Port              string
-	DatabaseURL       string
-	RedisURL          string
-	RabbitMQURL       string
-	JWTSecret         string
-	RestaurantSvcURL  string
-	IdempotencyExpiry string
+	AppEnv                string
+	Port                  string
+	DatabaseURL           string
+	RedisURL              string
+	RabbitMQURL           string
+	JWTSecret             string
+	RestaurantSvcURL      string
+	IdempotencyExpiry     string
+	RazorpayKeyID         string
+	RazorpayKeySecret     string
+	RazorpayWebhookSecret string
 }
 
 // Load reads env vars (and .env file) and returns a Config.
 func Load() *Config {
 	_ = godotenv.Load()
 	return &Config{
-		AppEnv:            getEnv("APP_ENV", "development"),
-		Port:              getEnv("PORT", "8004"),
-		DatabaseURL:       getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5436/order_db?sslmode=disable"),
-		RedisURL:          getEnv("REDIS_URL", "redis://localhost:6379"),
-		RabbitMQURL:       getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
-		JWTSecret:         getEnv("JWT_SECRET", "your-secret-key"),
-		RestaurantSvcURL:  getEnv("RESTAURANT_SERVICE_URL", "http://localhost:8003"),
-		IdempotencyExpiry: getEnv("IDEMPOTENCY_EXPIRY", "24h"),
+		AppEnv:                getEnv("APP_ENV", "development"),
+		Port:                  getEnv("PORT", "8004"),
+		DatabaseURL:           getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5436/order_db?sslmode=disable"),
+		RedisURL:              getEnv("REDIS_URL", "redis://localhost:6379"),
+		RabbitMQURL:           getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
+		JWTSecret:             getEnv("JWT_SECRET", "your-secret-key"),
+		RestaurantSvcURL:      getEnv("RESTAURANT_SERVICE_URL", "http://localhost:8003"),
+		IdempotencyExpiry:     getEnv("IDEMPOTENCY_EXPIRY", "24h"),
+		RazorpayKeyID:         getEnv("RAZORPAY_KEY_ID", ""),
+		RazorpayKeySecret:     getEnv("RAZORPAY_KEY_SECRET", ""),
+		RazorpayWebhookSecret: getEnv("RAZORPAY_WEBHOOK_SECRET", ""),
 	}
 }
 

@@ -22,6 +22,7 @@ type PaymentRepository interface {
 	Create(tx *gorm.DB, p *models.Payment) error
 	GetByOrder(orderID uint) (*models.Payment, error)
 	GetByIdempotencyKey(key string) (*models.Payment, error)
+	GetByProviderOrderID(providerOrderID string) (*models.Payment, error)
 	Update(tx *gorm.DB, p *models.Payment) error
 }
 
@@ -119,6 +120,15 @@ func (r *paymentRepo) GetByOrder(orderID uint) (*models.Payment, error) {
 func (r *paymentRepo) GetByIdempotencyKey(key string) (*models.Payment, error) {
 	var p models.Payment
 	err := r.db.Where("idempotency_key = ?", key).First(&p).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &p, err
+}
+
+func (r *paymentRepo) GetByProviderOrderID(providerOrderID string) (*models.Payment, error) {
+	var p models.Payment
+	err := r.db.Where("provider_order_id = ?", providerOrderID).First(&p).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}

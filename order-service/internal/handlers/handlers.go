@@ -23,6 +23,8 @@ func NewOrderHandler(svc service.OrderService) *OrderHandler {
 // RegisterRoutes wires handlers onto a router group.
 func (h *OrderHandler) RegisterRoutes(rg *gin.RouterGroup, jwtSecret string) {
 	rg.POST("/orders", h.PlaceOrder)
+	rg.POST("/payments/verify", h.VerifyPayment)
+	rg.GET("/payments/order/:orderId", h.GetPaymentByOrder)
 	rg.GET("/orders/:id", h.GetOrder)
 	rg.GET("/orders/user/:userId", h.ListByUser)
 	rg.GET("/orders/restaurant/:restaurantId", h.ListByRestaurant)
@@ -34,6 +36,7 @@ func (h *OrderHandler) RegisterRoutes(rg *gin.RouterGroup, jwtSecret string) {
 func (h *OrderHandler) RegisterInternalRoutes(rg *gin.RouterGroup) {
 	rg.PATCH("/internal/orders/:id/status", h.UpdateStatus)
 	rg.GET("/internal/orders/stats", h.GetStats)
+	rg.POST("/internal/payments/razorpay/webhook", h.RazorpayWebhook)
 }
 
 func (h *OrderHandler) PlaceOrder(c *gin.Context) {
@@ -56,7 +59,7 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 		return
 	}
 
-	order, err := h.svc.PlaceOrder(userID, key, &req)
+	order, payment, err := h.svc.PlaceOrder(userID, key, &req)
 	if err != nil {
 		switch err {
 		case service.ErrIdempotencyExists:
@@ -70,7 +73,56 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 		}
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"order": order})
+	c.JSON(http.StatusCreated, gin.H{
+		"order":             order,
+		"provider_order_id": payment.ProviderOrderID,
+	})
+}
+
+func (h *OrderHandler) VerifyPayment(c *gin.Context) {
+	var req models.VerifyPaymentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "validation_failed", Message: err.Error()})
+		return
+	}
+	order, err := h.svc.VerifyPayment(&req)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "payment_verified", "order": order})
+}
+
+func (h *OrderHandler) GetPaymentByOrder(c *gin.Context) {
+	orderID, _ := strconv.Atoi(c.Param("orderId"))
+	payment, err := h.svc.GetPaymentByOrder(uint(orderID))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal_server_error"})
+		return
+	}
+	if payment == nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "payment_not_found"})
+		return
+	}
+	c.JSON(http.StatusOK, models.PaymentStatusResponse{Payment: payment})
+}
+
+func (h *OrderHandler) RazorpayWebhook(c *gin.Context) {
+	body, err := c.GetRawData()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid_payload"})
+		return
+	}
+	sig := c.GetHeader("X-Razorpay-Signature")
+	if sig == "" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "signature_required"})
+		return
+	}
+	if err := h.svc.HandleRazorpayWebhook(sig, body); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, models.ErrorResponse{Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, models.SuccessResponse{Message: "webhook_processed"})
 }
 
 func (h *OrderHandler) GetOrder(c *gin.Context) {
